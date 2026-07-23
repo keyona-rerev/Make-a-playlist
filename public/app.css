@@ -178,3 +178,70 @@ textarea { resize: vertical; min-height: 6rem; line-height: 1.55; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   body::before { display: none; }
 }
+
+/* ---------------------------------------------------- theme tint */
+/* When a playlist uses the painted scene, the edit page borrows its
+   palette so the two do not feel like unrelated products. */
+
+body.theme-birthday {
+  --ink: #1C1522;
+  --ink-raised: #241B2C;
+  --ink-line: #3A2E42;
+  --paper: #F2ECCC;
+  --paper-dim: rgba(242, 236, 204, 0.62);
+  --brass: #F47F24;
+  --rust: #C1291B;
+  --muted: #9A8FA3;
+}
+body.theme-birthday::before { display: none; }
+body.theme-birthday .btn-primary { color: #1C1522; }
+body.theme-birthday .btn-primary:hover { background: #ff9440; border-color: #ff9440; color: #1C1522; }
+
+/* ----------------------------------------------------- top nav */
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  font-family: var(--ui);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.topbar a { text-decoration: none; border-bottom: 1px solid transparent; padding-bottom: 2px; }
+.topbar a:hover { border-bottom-color: var(--brass); }
+.topbar .home { color: var(--muted); }
+
+/* ---------------------------------------------------- your links */
+
+.links-panel { border: 1px solid var(--brass); border-radius: var(--radius); padding: 1.5rem; background: rgba(201, 162, 39, 0.05); }
+body.theme-birthday .links-panel { background: rgba(244, 127, 36, 0.07); }
+
+/* ---------------------------------------------------- dashboard */
+
+.card {
+  display: block;
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-line);
+  border-left: 2px solid var(--brass);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.card h3 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+.card .card-meta { font-family: var(--ui); font-size: 0.75rem; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+.card .card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.card .card-actions a, .card .card-actions button {
+  font-family: var(--ui);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  color: var(--paper);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  background: transparent;
+}
+.card .card-actions a:hover, .card .card-actions button:hover { border-color: var(--brass); color: var(--brass); }
