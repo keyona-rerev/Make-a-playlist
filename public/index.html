@@ -47,6 +47,15 @@
         <p class="hint">Optional. This is what people read before the first song.</p>
       </div>
 
+      <div class="field">
+        <label for="theme">Look</label>
+        <select id="theme">
+          <option value="">Liner notes</option>
+          <option value="birthday">Painted scene</option>
+        </select>
+        <p class="hint" id="themeHint">Dark and typographic, built for reading long notes.</p>
+      </div>
+
       <div id="formError" hidden></div>
       <button id="create" type="button" class="btn-primary">Create the playlist</button>
     </section>
@@ -90,6 +99,16 @@
 <script>
 const $ = (id) => document.getElementById(id);
 
+const THEME_HINTS = {
+  "": "Dark and typographic, built for reading long notes.",
+  birthday: "A hand-painted valley that reveals the songs as you scroll. Slower to load, good for a gift."
+};
+
+const themeSelect = $("theme");
+themeSelect.addEventListener("change", () => {
+  $("themeHint").textContent = THEME_HINTS[themeSelect.value] || THEME_HINTS[""];
+});
+
 const intro = $("intro");
 intro.addEventListener("input", () => {
   const n = intro.value.length;
@@ -123,6 +142,7 @@ $("create").addEventListener("click", async () => {
         title,
         creatorName: $("creator").value.trim(),
         intro: intro.value.trim(),
+        theme: themeSelect.value,
       }),
     });
     const body = await res.json();
