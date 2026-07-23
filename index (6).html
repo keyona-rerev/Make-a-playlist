@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Playlist with Commentary</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Animated Grid Background */
+        .grid-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                linear-gradient(rgba(30, 60, 114, 0.2) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(30, 60, 114, 0.2) 1px, transparent 1px);
+            background-size: 40px 40px;
+            animation: gridMove 20s linear infinite;
+            z-index: -1;
+        }
+
+        @keyframes gridMove {
+            0% {
+                transform: translate(0, 0);
+            }
+            100% {
+                transform: translate(40px, 40px);
+            }
+        }
+
+        .grid-bg::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                       radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.15) 0%, transparent 50%),
+                       radial-gradient(circle at 40% 80%, rgba(120, 219, 255, 0.2) 0%, transparent 50%);
+            animation: pulse 15s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 0.5;
+            }
+            100% {
+                opacity: 0.8;
+            }
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Main Content */
+        .content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        @media (min-width: 768px) {
+            .content {
+                flex-direction: row;
+            }
+        }
+
+        /* Video Section */
+        .video-section {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            background: rgba(20, 25, 45, 0.7);
+            backdrop-filter: blur(10px);
+        }
+
+        .video-container {
+            width: 100%;
+            height: 0;
+            padding-bottom: 56.25%; /* 16:9 aspect ratio */
+            position: relative;
+        }
+
+        .youtube-embed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .video-controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+            background: rgba(15, 20, 40, 0.8);
+        }
+
+        .control-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(40, 60, 120, 0.8);
+            border: 2px solid rgba(100, 150, 255, 0.5);
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .control-button:hover {
+            background: rgba(60, 90, 180, 0.9);
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .control-button:active {
+            transform: scale(0.95);
+        }
+
+        .play-button {
+            background: rgba(220, 60, 80, 0.9);
+            border-color: rgba(255, 100, 120, 0.7);
+        }
+
+        .playlist-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            padding: 15px;
+            background: rgba(15, 20, 40, 0.6);
+        }
+
+        .playlist-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: rgba(100, 130, 200, 0.5);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .playlist-dot.active {
+            background: #ffcc00;
+            transform: scale(1.2);
+            box-shadow: 0 0 10px rgba(255, 204, 0, 0.7);
+        }
+
+        /* Commentary Section */
+        .commentary-section {
+            flex: 1;
+            background: rgba(30, 35, 60, 0.8);
+            border-radius: 15px;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(100, 150, 255, 0.2);
+        }
+
+        .commentary-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #ffcc00;
+            text-align: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 204, 0, 0.3);
+        }
+
+        .commentary-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .commentary-slides {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.5s ease-in-out;
+        }
+
+        .commentary-slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .artist-section {
+            margin-bottom: 25px;
+        }
+
+        .artist-name {
+            font-size: 1.3rem;
+            color: #6ab7ff;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(106, 183, 255, 0.3);
+        }
+
+        .artist-context {
+            font-size: 0.9rem;
+            color: #aac8e5;
+            margin-bottom: 15px;
+            line-height: 1.5;
+            font-style: italic;
+        }
+
+        .track-info {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(20, 25, 45, 0.5);
+            border-radius: 8px;
+            border-left: 3px solid rgba(106, 183, 255, 0.5);
+        }
+
+        .track-title {
+            font-size: 1.2rem;
+            color: #a3d5ff;
+            margin-bottom: 5px;
+        }
+
+        .track-artist {
+            font-size: 1rem;
+            color: #b3e5fc;
+            margin-bottom: 10px;
+        }
+
+        .commentary-text {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: #e0e0e0;
+        }
+
+        .commentary-text p {
+            margin-bottom: 10px;
+        }
+
+ 
+
+        /* Responsive adjustments */
+        @media (max-width: 767px) {
+            .control-button {
+                width: 50px;
+                height: 50px;
+                font-size: 1.2rem;
+            }
+            
+            .container {
+                height: auto;
+                max-height: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="grid-bg"></div>
+    
+    <div class="container">
+        <div class="content">
+            <!-- Video Section -->
+            <div class="video-section">
+                <div class="video-container">
+                    <iframe class="youtube-embed" id="youtube-player" src="https://www.youtube.com/embed/iX8pYFlzP9U?enablejsapi=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                </div>
+                
+                <div class="video-controls">
+                    <button class="control-button prev-button">
+                        <i class="fas fa-backward-step"></i>
+                    </button>
+                    <button class="control-button play-button">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button class="control-button next-button">
+                        <i class="fas fa-forward-step"></i>
+                    </button>
+                </div>
+                
+                <div class="playlist-indicator" id="playlist-indicator">
+                    <!-- Dots will be generated by JavaScript -->
+                </div>
+            </div>
+            
+            <!-- Commentary Section -->
+            <div class="commentary-section">
+                <h2 class="commentary-title">TRACK COMMENTARY</h2>
+                
+                <div class="commentary-content">
+                    <div class="commentary-slides" id="commentary-slides">
+                        <!-- Commentary slides will be generated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+      
+
+    <script>
+        // Playlist data
+        const playlist = [
+            {
+                title: "The Baton",
+                artist: "Katie Gavin",
+                youtubeId: "iX8pYFlzP9U",
+                artistName: "Katie Gavin / MUNA",
+                artistContext: "Katie Gavin is the lead singer of the pop band MUNA, and she also has a folk-y album under her own name. One of my two favorite lyricists! I also admire how they use their public platform to uplift various social causes, call for community action, etc.",
+                commentary: "Starting with one off her solo project, also the newest of songs on this list. A meditation on mother-daughter relations."
+            },
+            {
+                title: "Kind of Girl",
+                artist: "MUNA",
+                youtubeId: "-m809HgeuLc",
+                artistName: "Katie Gavin / MUNA",
+                artistContext: "Katie Gavin is the lead singer of the pop band MUNA, and she also has a folk-y album under her own name. One of my two favorite lyricists! I also admire how they use their public platform to uplift various social causes, call for community action, etc.",
+                commentary: "One of the best self-love-y songs IMO. Paved the way for Katie Gavin's solo project, why I was particularly excited & proud to hear she was releasing one."
+            },
+            {
+                title: "I Know A Place",
+                artist: "MUNA",
+                youtubeId: "lohR8TkGa_k",
+                artistName: "Katie Gavin / MUNA",
+                artistContext: "Katie Gavin is the lead singer of the pop band MUNA, and she also has a folk-y album under her own name. One of my two favorite lyricists! I also admire how they use their public platform to uplift various social causes, call for community action, etc.",
+                commentary: "The OG banger, also a very uplifting message. MUNA was around for a while before they made it to the forefront of modern pop queer spaces, and this was one of their biggest songs years before they 'exploded'."
+            },
+            {
+                title: "Silk Chiffon",
+                artist: "MUNA",
+                youtubeId: "fhyk9rchC2c",
+                artistName: "Katie Gavin / MUNA",
+                artistContext: "Katie Gavin is the lead singer of the pop band MUNA, and she also has a folk-y album under her own name. One of my two favorite lyricists! I also admire how they use their public platform to uplift various social causes, call for community action, etc.",
+                commentary: "The song that catapulted MUNA to the forefront of the queer pop scene, partially due to the fact that it features Phoebe Bridgers (very popular indie artist with strong fan base if you don't know her). MUNA got dropped from their label in 2020 and was picked up by Bridgers' label Saddest Factory Records a year later. Music video is a tribute to the queer cult classic movie But I'm a Cheerleader."
+            },
+            {
+                title: "Salad",
+                artist: "Blondshell",
+                youtubeId: "MOkPTtgdaW4",
+                artistName: "Blondshell",
+                artistContext: "Up-and-coming indie rock singer; slowly cementing her spot on my list of favorite lyricists! I find her sound unique as a female rock vocalist.",
+                commentary: "Her best song IMO, Will always be one of her best songs. Listen to the lyrics, very powerful."
+            },
+            {
+                title: "What's Fair",
+                artist: "Blondshell",
+                youtubeId: "pvXT8BjqhUs",
+                artistName: "Blondshell",
+                artistContext: "Up-and-coming indie rock singer; slowly cementing her spot on my list of favorite lyricists! I find her sound unique as a female rock vocalist.",
+                commentary: "A good representation of her overall sound and ability to write about life & relationships (in this case, her relationship with her mother)."
+            },
+            {
+                title: "Model Rockets",
+                artist: "Blondshell",
+                youtubeId: "q113Iv_YN3o",
+                artistName: "Blondshell",
+                artistContext: "Up-and-coming indie rock singer; slowly cementing her spot on my list of favorite lyricists! I find her sound unique as a female rock vocalist.",
+                commentary: "My favorite off her newest album. Her bridges (on many of her songs) really get me. 🙏"
+            },
+            {
+                title: "Sex with my ex",
+                artist: "FLETCHER",
+                youtubeId: "qfavwT3gKn8",
+                artistName: "FLETCHER",
+                artistContext: "Ah yes, Fletcher.",
+                commentary: "Perhaps the most visually shocking song on her EP that was all about her breakup with her ex, famous lesbian YouTuber Shannon Beveridge. She and Shannon created a music video to every song on the EP while they were broken up and living together (intentionally) during covid (yes, you read that right)."
+            },
+            {
+                title: "Becky's So Hot",
+                artist: "FLETCHER",
+                youtubeId: "R2GJqI9qgD8",
+                artistName: "FLETCHER",
+                artistContext: "Ah yes, Fletcher.",
+                commentary: "The extremely controversial song that catapulted her career upward - Becky was Shannon's (not at all famous) new girlfriend (at the time) that Fletcher name drops. This video also gives a glimpse of Fletcher's live performances and intense fandom. I do not condone the song, it's exploitative (nor do I really like the song), but including for context. After this, there was 1-2 more albums about the same ex (ugh) and a whole saga involving Fletcher ending in featured on her ex's podcast to come full circle. Becky was the real hero here. As additional context, interestingly, Fletcher's interview / regular personality is very grounded and human forward while her artist persona historically has been lesbian chaos — something that seemed dissonant. All that drama apparently did not make Fletcher feel too good and her latest album (not included here) is purely self-reflective / slower, and she announced she would not be touring it right away / didn't know when she would or what she'd do next."
+            },
+            {
+                title: "girls girls girls",
+                artist: "FLETCHER",
+                youtubeId: "rzV9fgb-bsI",
+                artistName: "FLETCHER",
+                artistContext: "Ah yes, Fletcher.",
+                commentary: "A reinterpretation / spin off / sample of Katy Perry's I kissed a girl but fr gay"
+            },
+            {
+                title: "Ode to Sleep",
+                artist: "Twenty One Pilots",
+                youtubeId: "2OnO3UXFZdE",
+                artistName: "Twenty One Pilots",
+                artistContext: "A 2-person band made up of Tyler Joseph (singer + much more) and Josh Dun (drummer)",
+                commentary: "I chose this video bc it shows the sound of their roots and progression from a small band playing to rooms of 12 people to thousands."
+            },
+            {
+                title: "City Walls",
+                artist: "Twenty One Pilots",
+                youtubeId: "5Ozjel72yjQ",
+                artistName: "Twenty One Pilots",
+                artistContext: "A 2-person band made up of Tyler Joseph (singer + much more) and Josh Dun (drummer)",
+                commentary: "Please do not feel pressured to watch this entire video 🤣. I included this video because it closes a decade-long concept project that spans several albums. Between that first video and this one, tøp released 5 albums and a ton of corresponding media (a secret website, letters, music videos. etc.) that build out a story about a character Clancy trying to escape from a city called Dema, mirroring the struggles people can experience with mental health and trying to escape those patterns. A lot of the tøp fanbase was drawn to the band due to their lyrics / imagery / etc. directly addressing mental health struggles. The video contains callbacks to several lore-related videos from those earlier albums, and the audio ends with the beginning audio of the song heavydirtysoul, which essentially makes a full circle with the plot."
+            },
+            {
+                title: "Oldies Station",
+                artist: "Twenty One Pilots",
+                youtubeId: "bcnXSpcAk-w",
+                artistName: "Twenty One Pilots",
+                artistContext: "A 2-person band made up of Tyler Joseph (singer + much more) and Josh Dun (drummer)",
+                commentary: "Oldies Station is one of my favorite tøp songs and I think this acoustic rendition is beautiful. You'll see Tyler prefaces the song by saying a main purpose of it it was to give the fans an update on how he was — as I mentioned before a lot of the fanbase is very connected to the theme of mental health that runs through the band's music & they are well-versed in what Tyler has shared of his own experiences in the songs etc. Thus why his fans would be invested in that so much as to produce a song."
+            },
+            {
+                title: "Downstairs",
+                artist: "Twenty One Pilots",
+                youtubeId: "zcZMQZbPMxM",
+                artistName: "Twenty One Pilots",
+                artistContext: "A 2-person band made up of Tyler Joseph (singer + much more) and Josh Dun (drummer)",
+                commentary: "This is a really special song off the new album – when I attended Seasick's album release listening party, Tyler prefaced that this song was actually 14 years old and Josh (the drummer) had kept a demo of it on his computer after all those years and brought it up as an idea for this album. Stylistically, it sounds similar to their early stuff. Very special context for this (very recent!!) video — this is the first (and only so far) time they played it live. It is not on their tour setlist. This video was filmed at a private no-phones show hosted by a radio station while they were in LA last week to play some stadiums. You can tell how shocked and excited the fans were when they realized what song was starting. I think the video also really encapsulates the connection between the band and their fans, and the band's dynamic audience engagement."
+            },
+            {
+                title: "HOT TO GO!",
+                artist: "Chappell Roan",
+                youtubeId: "xaPNR-_Cfn0",
+                artistName: "Chappell Roan",
+                artistContext: "",
+                commentary: "A great encapsulation of her bubblegum pop aesthetic and energy mixed with Midwest Princess roots. If you didn't know, she's from the small town of Springfield, MO, where this music video is set."
+            },
+            {
+                title: "Naked In Manhattan",
+                artist: "Chappell Roan",
+                youtubeId: "QW2Alij7jlY",
+                artistName: "Chappell Roan",
+                artistContext: "",
+                commentary: "My fav! So fun so cute. Independently released in 2022 as she got dropped from her label in 2020 and before she signed with her producer Dan Nigro's Amusement Records in early 2023 — Dan Nigro also produces for Olivia Rodrigo. After she was dropped, she moved back to MO to save up $ and give it one last shot in LA (clearly that worked out). Her catapult to fame occurred in spring/summer 2024 after the momentum she built with the independent releases, opening for Olivia Rodrigo's world tour, appearing on NPR Tony Desk, promoting and releasing her single Good Luck, Babe!, and playing Coachella right after that. Fun fact — I saw her at Iron City (~1500 cap) in March of 2024 and it felt like a tidal wave before it took off. I then saw her 5 months later in a crowd of 100K people at lollapalooza in Chicago. Wild."
+            },
+            {
+                title: "Kaleidoscope",
+                artist: "Chappell Roan",
+                youtubeId: "imHkz5nD6gs",
+                artistName: "Chappell Roan",
+                artistContext: "",
+                commentary: "Gorgeous song, about her best friend that she was in love with who didn't share those feelings. If you like the slower sound, listen to California, which is basically about her journey struggling to make it as an artist and moving from Missouri to LA to do so."
+            },
+            {
+                title: "Slow Burn",
+                artist: "Kacey Musgraves",
+                youtubeId: "8NEmNGkj7_Y",
+                artistName: "Kacey Musgraves",
+                artistContext: "",
+                commentary: "\"grandma cried when I pierced my nose\" one of my fav song lyrics ever 🤣makes me giggle every time"
+            },
+            {
+                title: "Oh, What A World",
+                artist: "Kacey Musgraves",
+                youtubeId: "1hwRe7scRiY",
+                artistName: "Kacey Musgraves",
+                artistContext: "",
+                commentary: "Gorgeous song about how beautiful the world is (and whatever man she's also singing about (?))."
+            },
+            {
+                title: "The Architect",
+                artist: "Kacey Musgraves",
+                youtubeId: "Tog63hCb7xs",
+                artistName: "Kacey Musgraves",
+                artistContext: "",
+                commentary: "Ms. Musgraves likes to meditate on life and I must say I quite enjoy that."
+            }
+        ];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const prevButton = document.querySelector('.prev-button');
+            const nextButton = document.querySelector('.next-button');
+            const playButton = document.querySelector('.play-button');
+            const playlistIndicator = document.getElementById('playlist-indicator');
+            const commentarySlides = document.getElementById('commentary-slides');
+            const youtubePlayer = document.getElementById('youtube-player');
+            
+            let currentTrack = 0;
+            let isPlaying = false;
+            
+            // Create playlist dots
+            playlist.forEach((track, index) => {
+                const dot = document.createElement('div');
+                dot.className = 'playlist-dot';
+                if (index === 0) dot.classList.add('active');
+                dot.setAttribute('data-index', index);
+                playlistIndicator.appendChild(dot);
+            });
+            
+            const dots = document.querySelectorAll('.playlist-dot');
+            
+            // Create commentary slides
+            playlist.forEach((track, index) => {
+                const slide = document.createElement('div');
+                slide.className = 'commentary-slide';
+                slide.style.transform = `translateX(${index * 100}%)`;
+                
+                // Create artist section for this track
+                const artistSection = document.createElement('div');
+                artistSection.className = 'artist-section';
+                
+                const artistName = document.createElement('h3');
+                artistName.className = 'artist-name';
+                artistName.textContent = track.artistName;
+                artistSection.appendChild(artistName);
+                
+                if (track.artistContext) {
+                    const artistContext = document.createElement('p');
+                    artistContext.className = 'artist-context';
+                    artistContext.textContent = track.artistContext;
+                    artistSection.appendChild(artistContext);
+                }
+                
+                // Create track info
+                const trackInfo = document.createElement('div');
+                trackInfo.className = 'track-info';
+                
+                const trackTitle = document.createElement('h4');
+                trackTitle.className = 'track-title';
+                trackTitle.textContent = track.title;
+                trackInfo.appendChild(trackTitle);
+                
+                const trackArtist = document.createElement('p');
+                trackArtist.className = 'track-artist';
+                trackArtist.textContent = track.artist;
+                trackInfo.appendChild(trackArtist);
+                
+                const commentaryText = document.createElement('div');
+                commentaryText.className = 'commentary-text';
+                
+                // Split commentary by paragraphs if needed
+                const paragraphs = track.commentary.split('\n');
+                paragraphs.forEach(paragraph => {
+                    if (paragraph.trim()) {
+                        const p = document.createElement('p');
+                        p.textContent = paragraph.trim();
+                        commentaryText.appendChild(p);
+                    }
+                });
+                
+                trackInfo.appendChild(commentaryText);
+                artistSection.appendChild(trackInfo);
+                slide.appendChild(artistSection);
+                commentarySlides.appendChild(slide);
+            });
+            
+            // Navigation functions
+            function goToTrack(index) {
+                // Update active dot
+                dots.forEach(dot => dot.classList.remove('active'));
+                dots[index].classList.add('active');
+                
+                // Update YouTube video
+                currentTrack = index;
+                youtubePlayer.src = `https://www.youtube.com/embed/${playlist[index].youtubeId}?enablejsapi=1&autoplay=0`;
+                
+                // Update commentary slide position
+                commentarySlides.style.transform = `translateX(-${index * 100}%)`;
+                
+                // Reset play button
+                playButton.innerHTML = '<i class="fas fa-play"></i>';
+                isPlaying = false;
+            }
+            
+            // Event listeners
+            prevButton.addEventListener('click', function() {
+                let newIndex = currentTrack - 1;
+                if (newIndex < 0) newIndex = playlist.length - 1;
+                goToTrack(newIndex);
+            });
+            
+            nextButton.addEventListener('click', function() {
+                let newIndex = currentTrack + 1;
+                if (newIndex >= playlist.length) newIndex = 0;
+                goToTrack(newIndex);
+            });
+            
+            playButton.addEventListener('click', function() {
+                // Toggle play/pause
+                if (!isPlaying) {
+                    playButton.innerHTML = '<i class="fas fa-pause"></i>';
+                    isPlaying = true;
+                    // For now, we'll just reload the video with autoplay
+                    youtubePlayer.src = `https://www.youtube.com/embed/${playlist[currentTrack].youtubeId}?enablejsapi=1&autoplay=1`;
+                } else {
+                    playButton.innerHTML = '<i class="fas fa-play"></i>';
+                    isPlaying = false;
+                    // For now, we'll just reload the video without autoplay
+                    youtubePlayer.src = `https://www.youtube.com/embed/${playlist[currentTrack].youtubeId}?enablejsapi=1&autoplay=0`;
+                }
+            });
+            
+            // Dot navigation
+            dots.forEach((dot) => {
+                dot.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    goToTrack(index);
+                });
+            });
+            
+            // Initialize with first track
+            goToTrack(0);
+        });
+    </script>
+</body>
+</html>
