@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Your playlists</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="wrap wrap--narrow">
+    <nav class="topbar">
+      <a href="/" class="home">Make a playlist</a>
+      <span>Your playlists</span>
+    </nav>
+
+    <header class="masthead">
+      <p class="eyebrow">This device</p>
+      <h1>Your playlists</h1>
+      <p class="lede" style="margin-top:1.25rem">
+        Every playlist you have made or opened an edit link for, on this browser.
+        Both links for each one are below.
+      </p>
+    </header>
+
+    <div id="list"></div>
+
+    <div class="notice" style="margin-top:2.5rem">
+      <strong>This list lives in this browser.</strong> There are no accounts, so it
+      does not follow you to your phone or survive clearing your browsing data. The
+      links themselves never expire. Keep the edit links somewhere you trust and you
+      can always get back in.
+    </div>
+  </div>
+
+<script>
+const STORE = "map.playlists";
+const $ = (id) => document.getElementById(id);
+
+function saved() {
+  try { return JSON.parse(localStorage.getItem(STORE) || "[]"); }
+  catch { return []; }
+}
+
+function forget(slug) {
+  const kept = saved().filter((p) => p.slug !== slug);
+  localStorage.setItem(STORE, JSON.stringify(kept));
+  render();
+}
+
+function copyRow(labelText, value) {
+  const field = document.createElement("div");
+  field.className = "field";
+  field.style.marginBottom = "1rem";
+
+  const label = document.createElement("label");
+  label.textContent = labelText;
+
+  const row = document.createElement("div");
+  row.className = "copyrow";
+
+  const input = document.createElement("input");
+  input.readOnly = true;
+  input.value = value;
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "Copy";
+  btn.addEventListener("click", async () => {
+    input.select();
+    try {
+      await navigator.clipboard.writeText(value);
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = "Copy"; }, 1600);
+    } catch {
+      btn.textContent = "Press Ctrl+C";
+    }
+  });
+
+  row.append(input, btn);
+  field.append(label, row);
+  return field;
+}
+
+async function render() {
+  const list = $("list");
+  list.replaceChildren();
+
+  const entries = saved();
+  if (!entries.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "Nothing here yet. Make a playlist and it will show up.";
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const entry of entries) {
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const title = document.createElement("h3");
+    title.textContent = entry.title || entry.slug;
+
+    const meta = document.createElement("p");
+    meta.className = "card-meta";
+    meta.textContent = "Checking";
+
+    card.append(title, meta);
+
+    const share = location.origin + "/p/" + entry.slug;
+    const edit = location.origin + "/e/" + entry.slug + "#" + entry.key;
+
+    card.append(
+      copyRow("Share link — anyone can listen", share),
+      copyRow("Edit link — anyone can add songs", edit)
+    );
+
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+
+    const open = document.createElement("a");
+    open.href = share;
+    open.textContent = "Open it";
+
+    const editIt = document.createElement("a");
+    editIt.href = edit;
+    editIt.textContent = "Add songs";
+
+    const drop = document.createElement("button");
+    drop.type = "button";
+    drop.textContent = "Remove from this list";
+    drop.addEventListener("click", () => {
+      drop.textContent = "Removing";
+      forget(entry.slug);
+    });
+
+    actions.append(open, editIt, drop);
+    card.appendChild(actions);
+    list.appendChild(card);
+
+    // Refresh the title and song count from the server so the card does not
+    // go stale after the playlist is renamed or added to elsewhere.
+    fetch("/api/playlists/" + encodeURIComponent(entry.slug))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) {
+          meta.textContent = "This playlist is no longer reachable";
+          return;
+        }
+        title.textContent = data.title;
+        const look = data.theme === "birthday" ? "Painted scene" : "Liner notes";
+        const n = data.tracks.length;
+        meta.textContent = `${n} ${n === 1 ? "song" : "songs"} · ${look}`;
+      })
+      .catch(() => { meta.textContent = "Could not reach the server"; });
+  }
+}
+
+render();
+</script>
+</body>
+</html>
