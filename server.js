@@ -45,7 +45,13 @@ CREATE TABLE IF NOT EXISTS playlist_tracks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tracks_playlist ON playlist_tracks (playlist_id, position);
+
+ALTER TABLE playlists ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT '';
 `;
+
+// Templates a playlist can be rendered with. Anything not listed falls back
+// to the default liner-notes page.
+const THEMES = { birthday: "play-birthday.html" };
 
 async function migrate() {
   await pool.query(SCHEMA);
@@ -133,6 +139,7 @@ function publicShape(playlist, tracks) {
     title: playlist.title,
     intro: playlist.intro,
     creatorName: playlist.creator_name,
+    theme: playlist.theme || "",
     viewCount: playlist.view_count,
     tracks: tracks.map((t) => ({
       id: t.id,
@@ -194,14 +201,15 @@ app.post("/api/playlists", rateLimit(5, 3600000), async (req, res) => {
   const editToken = randomId(32);
 
   const { rows } = await pool.query(
-    `INSERT INTO playlists (slug, edit_token_hash, title, intro, creator_name)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    `INSERT INTO playlists (slug, edit_token_hash, title, intro, creator_name, theme)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
     [
       slug,
       hashToken(editToken),
       title,
       clean(req.body.intro, MAX_COMMENTARY),
       clean(req.body.creatorName, MAX_SHORT),
+      THEMES[req.body.theme] ? req.body.theme : "",
     ]
   );
 
@@ -222,12 +230,13 @@ app.patch("/api/playlists/:slug", async (req, res) => {
   if (!found) return;
   const p = found.playlist;
   const { rows } = await pool.query(
-    `UPDATE playlists SET title = $1, intro = $2, creator_name = $3, updated_at = now()
-     WHERE id = $4 RETURNING *`,
+    `UPDATE playlists SET title = $1, intro = $2, creator_name = $3, theme = $4, updated_at = now()
+     WHERE id = $5 RETURNING *`,
     [
       req.body.title !== undefined ? clean(req.body.title, MAX_SHORT) || p.title : p.title,
       req.body.intro !== undefined ? clean(req.body.intro, MAX_COMMENTARY) : p.intro,
       req.body.creatorName !== undefined ? clean(req.body.creatorName, MAX_SHORT) : p.creator_name,
+      req.body.theme !== undefined ? (THEMES[req.body.theme] ? req.body.theme : "") : p.theme,
       p.id,
     ]
   );
@@ -325,8 +334,10 @@ app.get("/p/:slug", async (req, res, next) => {
       ? `https://i.ytimg.com/vi/${tracks[0].youtube_id}/hqdefault.jpg`
       : "";
 
+    const template = THEMES[playlist.theme] || "play.html";
+
     const html = fs
-      .readFileSync(path.join(PUBLIC_DIR, "play.html"), "utf8")
+      .readFileSync(path.join(PUBLIC_DIR, template), "utf8")
       .replace(
         "<!--OG-->",
         [
