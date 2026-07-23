@@ -9,6 +9,11 @@
 </head>
 <body>
   <div class="wrap wrap--narrow">
+    <nav class="topbar">
+      <a href="/" class="home">Make a playlist</a>
+      <a href="/mine">Your playlists</a>
+    </nav>
+
     <header class="masthead">
       <p class="eyebrow">Edit mode</p>
       <h1 id="title">Loading</h1>
@@ -18,6 +23,27 @@
     <div id="gate" hidden></div>
 
     <main id="main" hidden>
+      <section class="links-panel" style="margin-bottom:2.5rem">
+        <h2 style="margin-bottom:1.25rem">Your two links</h2>
+
+        <div class="field">
+          <label for="shareLink">Send this one — anyone can listen</label>
+          <div class="copyrow">
+            <input id="shareLink" readonly>
+            <button type="button" data-copy="shareLink">Copy</button>
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:0">
+          <label for="editLink">Keep this one — anyone with it can add songs</label>
+          <div class="copyrow">
+            <input id="editLink" readonly>
+            <button type="button" data-copy="editLink">Copy</button>
+          </div>
+          <p class="hint">This page. Bookmark it, or find it again under Your playlists.</p>
+        </div>
+      </section>
+
       <section class="panel">
         <h2 style="margin-bottom:1.5rem">Add a song</h2>
 
@@ -93,11 +119,30 @@ const key = location.hash.slice(1);
 let data = null;
 
 const $ = (id) => document.getElementById(id);
+const STORE = "map.playlists";
+
+function saved() {
+  try { return JSON.parse(localStorage.getItem(STORE) || "[]"); }
+  catch { return []; }
+}
+
+function remember(slug, key, title) {
+  const list = saved().filter((p) => p.slug !== slug);
+  list.unshift({ slug, key, title, savedAt: Date.now() });
+  try { localStorage.setItem(STORE, JSON.stringify(list)); } catch {}
+}
+
 const api = (path, options = {}) =>
   fetch(path, {
     ...options,
     headers: { "Content-Type": "application/json", "X-Edit-Key": key, ...(options.headers || {}) },
   });
+
+// The edit page borrows the playlist's palette so switching the look is
+// visible from here, not just on the share link.
+function applyTheme(theme) {
+  document.body.classList.toggle("theme-birthday", theme === "birthday");
+}
 
 function blocked(message) {
   const box = $("gate");
@@ -298,6 +343,11 @@ async function load() {
   $("byline").textContent = data.creatorName ? "Assembled by " + data.creatorName : "";
   $("viewLink").href = "/p/" + slug;
   $("theme").value = data.theme || "";
+  applyTheme(data.theme);
+
+  $("shareLink").value = location.origin + "/p/" + slug;
+  $("editLink").value = location.origin + "/e/" + slug + "#" + key;
+
   renderList();
 }
 
@@ -324,6 +374,21 @@ async function boot() {
 
   $("gate").hidden = true;
   $("main").hidden = false;
+  remember(slug, key, data.title);
+
+  document.querySelectorAll("[data-copy]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const input = $(btn.dataset.copy);
+      input.select();
+      try {
+        await navigator.clipboard.writeText(input.value);
+        btn.textContent = "Copied";
+        setTimeout(() => { btn.textContent = "Copy"; }, 1600);
+      } catch {
+        btn.textContent = "Press Ctrl+C";
+      }
+    });
+  });
 
   $("theme").addEventListener("change", async () => {
     const status = $("themeStatus");
@@ -341,7 +406,8 @@ async function boot() {
       const updated = await res.json();
       data.theme = updated.theme;
       $("theme").value = updated.theme || "";
-      status.textContent = "Saved. Reload the share link to see it.";
+      applyTheme(updated.theme);
+      status.textContent = "Saved. This page changed colour too, so you can see it.";
     } catch {
       status.textContent = "Could not reach the server. Try again.";
     }
