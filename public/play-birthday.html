@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--OG-->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-base: #1C1522;
+            --c-text-primary: #F2ECCC;
+            --c-text-muted: rgba(242, 236, 204, 0.5);
+            --c-accent: #F47F24;
+            --ui-border: rgba(242, 236, 204, 0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--c-text-primary);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .scroll-proxy { height: 350vh; width: 100%; }
+
+        .viewport {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            overflow: hidden;
+            pointer-events: none;
+            background: radial-gradient(circle at center, #2D1E2F 0%, #110A14 100%);
+        }
+
+        .layer {
+            position: absolute;
+            top: -10vh; left: -5vw;
+            width: 110vw; height: 120vh;
+            will-change: transform;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #layer-fg { pointer-events: auto; }
+
+        .ui-chrome {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            padding: 2.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .ui-top, .ui-bottom { display: flex; justify-content: space-between; align-items: flex-start; }
+        .ui-bottom { align-items: flex-end; }
+
+        .sys-text {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.25em;
+            font-weight: 500;
+            color: var(--c-text-primary);
+            pointer-events: auto;
+        }
+
+        .sys-text span { color: var(--c-text-muted); margin-right: 8px; }
+
+        .sys-link {
+            cursor: pointer;
+            text-decoration: none;
+            color: var(--c-text-primary);
+            transition: color 0.3s ease;
+            background: none;
+            border: 0;
+            font-family: inherit;
+            font-size: inherit;
+            letter-spacing: inherit;
+            text-transform: inherit;
+            font-weight: inherit;
+        }
+        .sys-link:hover { color: var(--c-accent); }
+
+        .data-block { display: flex; flex-direction: column; gap: 4px; text-align: right; }
+
+        .data-label {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 14px;
+            color: var(--c-text-muted);
+            letter-spacing: 0;
+            text-transform: none;
+        }
+
+        .title-container {
+            position: absolute;
+            top: 45%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            width: 100%;
+            pointer-events: none;
+            mix-blend-mode: hard-light;
+            opacity: 0.9;
+        }
+
+        h1 {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: clamp(3.5rem, 12vw, 14rem);
+            font-weight: 300;
+            line-height: 0.8;
+            letter-spacing: -0.03em;
+            margin: 0;
+            color: #F2ECCC;
+            text-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            padding: 0 1rem;
+        }
+
+        .subtitle {
+            margin-top: 2rem;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.4em;
+            color: var(--c-accent);
+            font-weight: 600;
+            padding: 0 1.5rem;
+        }
+
+        .artifact-btn {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            width: 56px; height: 56px;
+            border-radius: 50%;
+            background: rgba(28, 21, 34, 0.4);
+            border: 1px solid rgba(242, 236, 204, 0.2);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+            color: var(--c-text-primary);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.05);
+        }
+
+        .artifact-btn svg {
+            width: 20px; height: 20px;
+            stroke-width: 1.2;
+            transition: transform 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+            pointer-events: none;
+        }
+
+        .artifact-label {
+            position: absolute;
+            top: 100%; left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            font-weight: 600;
+            color: var(--c-text-primary);
+            opacity: 0;
+            transition: all 0.4s ease;
+            white-space: nowrap;
+            pointer-events: none;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .artifact-btn:hover {
+            background: rgba(45, 30, 47, 0.8);
+            border-color: var(--c-accent);
+            transform: translate(-50%, -50%) scale(1.05);
+            box-shadow: 0 0 40px rgba(244, 127, 36, 0.3), inset 0 0 0 1px rgba(244, 127, 36, 0.5);
+        }
+
+        .artifact-btn:hover svg { transform: scale(1.1); stroke: var(--c-accent); }
+        .artifact-btn:hover .artifact-label { opacity: 1; transform: translateX(-50%) translateY(16px); }
+        .artifact-btn:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 4px; }
+
+        #loader {
+            position: fixed;
+            inset: 0;
+            background: var(--bg-base);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--c-text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            transition: opacity 1s ease;
+        }
+
+        .progress-line {
+            position: absolute;
+            bottom: 20%; left: 50%;
+            transform: translateX(-50%);
+            width: 200px; height: 1px;
+            background: rgba(255,255,255,0.1);
+            overflow: hidden;
+        }
+
+        .progress-fill { height: 100%; width: 0%; background: var(--c-accent); transition: width 0.1s linear; }
+
+        /* ---------------- playlist components ---------------- */
+        /* Added on top of the scene. The scene keeps parallaxing behind them. */
+
+        .set {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5.5rem 2.5rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.6s ease;
+        }
+        .set.visible { opacity: 1; pointer-events: auto; }
+
+        .set-inner {
+            width: 100%;
+            max-width: 1080px;
+            display: grid;
+            gap: 2rem;
+            grid-template-columns: 1fr;
+            align-items: center;
+        }
+        @media (min-width: 900px) { .set-inner { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); } }
+
+        .screen {
+            border: 1px solid var(--ui-border);
+            background: rgba(17, 10, 20, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+        }
+        .screen .frame { position: relative; padding-bottom: 56.25%; height: 0; background: #000; }
+        .screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+        .transport {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--ui-border);
+        }
+        .transport .spacer { flex: 1; }
+
+        .t-btn {
+            background: none;
+            border: 0;
+            color: var(--c-text-primary);
+            cursor: pointer;
+            padding: 0.35rem;
+            display: flex;
+            transition: color 0.3s ease;
+        }
+        .t-btn:hover { color: var(--c-accent); }
+        .t-btn:focus-visible { outline: 1px solid var(--c-accent); outline-offset: 3px; }
+        .t-btn[disabled] { opacity: 0.3; cursor: not-allowed; }
+        .t-btn svg { width: 18px; height: 18px; stroke-width: 1.4; fill: none; stroke: currentColor; }
+
+        .note-panel {
+            border-left: 1px solid var(--c-accent);
+            padding: 0.25rem 0 0.25rem 1.5rem;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .note-artist {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.25em;
+            font-weight: 600;
+            color: var(--c-accent);
+        }
+        .note-song {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+            font-weight: 300;
+            line-height: 1.05;
+            margin-top: 0.75rem;
+        }
+        .note-context {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 15px;
+            color: var(--c-text-muted);
+            margin-top: 0.85rem;
+            line-height: 1.5;
+        }
+        .note-body {
+            font-size: 14px;
+            line-height: 1.75;
+            color: rgba(242, 236, 204, 0.85);
+            margin-top: 1.1rem;
+            white-space: pre-wrap;
+        }
+        .note-credit {
+            margin-top: 1.5rem;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: var(--c-text-muted);
+        }
+        .note-credit b { color: var(--c-accent); font-weight: 600; }
+
+        /* Tracklist overlay, opened from the corner chrome */
+        .index {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(17, 10, 20, 0.94);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 5rem 2.5rem 2.5rem;
+            overflow-y: auto;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+        .index.open { opacity: 1; pointer-events: auto; }
+
+        .index-inner { max-width: 900px; margin: 0 auto; }
+        .index-close { position: fixed; top: 2.5rem; right: 2.5rem; }
+
+        .index-row {
+            display: flex;
+            gap: 1.5rem;
+            align-items: baseline;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: 0;
+            border-bottom: 1px solid rgba(242, 236, 204, 0.08);
+            padding: 1.15rem 0.5rem;
+            cursor: pointer;
+            color: var(--c-text-primary);
+            transition: background 0.3s ease, padding 0.3s ease;
+        }
+        .index-row:hover { background: rgba(242, 236, 204, 0.04); padding-left: 1.25rem; }
+        .index-row[aria-current="true"] .index-title { color: var(--c-accent); }
+        .index-row:focus-visible { outline: 1px solid var(--c-accent); outline-offset: -1px; }
+
+        .index-num {
+            font-size: 10px;
+            letter-spacing: 0.2em;
+            color: var(--c-text-muted);
+            min-width: 2.5rem;
+            flex-shrink: 0;
+        }
+        .index-title { font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 300; }
+        .index-artist { font-size: 10px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--c-text-muted); margin-top: 0.3rem; }
+
+        @media (max-width: 767px) {
+            .ui-chrome { padding: 1.25rem; }
+            .set { padding: 4.5rem 1.25rem 2rem; align-items: flex-start; overflow-y: auto; }
+            .note-panel { max-height: none; }
+            .index { padding: 4.5rem 1.25rem 2rem; }
+            .index-close { top: 1.25rem; right: 1.25rem; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .layer { transition: none !important; }
+            * { animation: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loader">
+        <div id="loader-text">Painting the scene...</div>
+        <div class="progress-line"><div class="progress-fill" id="progress"></div></div>
+    </div>
+
+    <div class="scroll-proxy"></div>
+
+    <div class="viewport">
+        <div class="layer" id="layer-bg" data-speed="0.1"><canvas id="canvas-bg"></canvas></div>
+        <div class="layer" id="layer-mid" data-speed="0.25"><canvas id="canvas-mid"></canvas></div>
+        <div class="layer" id="layer-path" data-speed="0.45"><canvas id="canvas-path"></canvas></div>
+
+        <div class="layer" id="layer-fg" data-speed="0.8">
+            <canvas id="canvas-fg"></canvas>
+
+            <button class="artifact-btn" id="btn-play" type="button" aria-label="Play the set">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" id="icon-play"><path d="M6 4l14 8-14 8V4z"/></svg>
+                <div class="artifact-label" id="label-play">Start the set</div>
+            </button>
+
+            <button class="artifact-btn" id="btn-index" type="button" aria-label="Open the tracklist">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+                <div class="artifact-label">The tracklist</div>
+            </button>
+        </div>
+
+        <div class="title-container" id="title-fx">
+            <h1 id="hero-title">&nbsp;</h1>
+            <div class="subtitle" id="hero-subtitle"></div>
+        </div>
+    </div>
+
+    <!-- the set -->
+    <div class="set" id="set">
+        <div class="set-inner">
+            <div class="screen">
+                <div class="frame"><div id="player"></div></div>
+                <div class="transport">
+                    <button class="t-btn" id="prev" type="button" aria-label="Previous song">
+                        <svg viewBox="0 0 24 24"><path d="M19 20L9 12l10-8v16zM5 19V5"/></svg>
+                    </button>
+                    <button class="t-btn" id="playpause" type="button" aria-label="Play or pause">
+                        <svg viewBox="0 0 24 24" id="tp-icon"><path d="M6 4l14 8-14 8V4z"/></svg>
+                    </button>
+                    <button class="t-btn" id="next" type="button" aria-label="Next song">
+                        <svg viewBox="0 0 24 24"><path d="M5 4l10 8-10 8V4zM19 5v14"/></svg>
+                    </button>
+                    <span class="spacer"></span>
+                    <span class="sys-text" id="position"></span>
+                </div>
+            </div>
+
+            <div class="note-panel" id="note"></div>
+        </div>
+    </div>
+
+    <!-- tracklist -->
+    <div class="index" id="index">
+        <button class="sys-text sys-link index-close" id="index-close" type="button">Close</button>
+        <div class="index-inner" id="index-list"></div>
+    </div>
+
+    <div class="ui-chrome">
+        <div class="ui-top">
+            <div class="sys-text"><span id="chrome-eyebrow">SET</span> <span id="chrome-count" style="color:var(--c-text-primary)"></span></div>
+            <button class="sys-text sys-link" id="open-index" type="button">TRACKLIST</button>
+        </div>
+
+        <div class="ui-bottom">
+            <div class="sys-text" style="writing-mode: vertical-rl; transform: rotate(180deg);" id="scroll-hint">
+                SCROLL TO BEGIN
+            </div>
+
+            <div class="data-block sys-text">
+                <div class="data-label">Assembled by</div>
+                <div id="chrome-creator"></div>
+                <div style="margin-top: 1rem;" class="data-label">Songs</div>
+                <div id="chrome-songs"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ============================================================
+           GENERATIVE SCENE — unchanged from the source design
+           ============================================================ */
+
+        const P = {
+            dark: ['#1C1522', '#2D1E2F', '#3B1C2A', '#161B1E'],
+            forestBg: ['#2A362D', '#3B1C2A', '#2D1E2F', '#4A6D56', '#1A2421'],
+            forestMid: ['#4A6D56', '#6A8B74', '#385244', '#7C839F', '#8CA894'],
+            path: ['#E8E2B2', '#F2ECCC', '#DCA543', '#E2B85A', '#A8BA9A'],
+            flowers: ['#F47F24', '#C1291B', '#E04B22', '#DCA543', '#FFFFFF'],
+            traveler1: ['#8C6046', '#DCA543', '#6A8B74', '#4A3B32'],
+            traveler2: ['#7C839F', '#3B1C2A', '#515B7E', '#2D1E2F']
+        };
+
+        const canvasLayers = [
+            { id: 'canvas-bg', ctx: null },
+            { id: 'canvas-mid', ctx: null },
+            { id: 'canvas-path', ctx: null },
+            { id: 'canvas-fg', ctx: null }
+        ];
+
+        let w, h;
+        let t1Coords = { x: 0, y: 0 };
+        let t2Coords = { x: 0, y: 0 };
+
+        function initCanvases() {
+            w = window.innerWidth * 1.1;
+            h = window.innerHeight * 1.2;
+
+            canvasLayers.forEach(layer => {
+                const c = document.getElementById(layer.id);
+                c.width = w;
+                c.height = h;
+                layer.ctx = c.getContext('2d', { alpha: true });
+            });
+
+            t1Coords = { x: window.innerWidth * 0.4, y: window.innerHeight * 0.75 };
+            t2Coords = { x: window.innerWidth * 0.6, y: window.innerHeight * 0.7 };
+
+            const btnPlay = document.getElementById('btn-play');
+            const btnIndex = document.getElementById('btn-index');
+
+            const xOffset = window.innerWidth * 0.05;
+            const yOffset = window.innerHeight * 0.1;
+
+            btnPlay.style.left = `${(t1Coords.x + xOffset)}px`;
+            btnPlay.style.top = `${(t1Coords.y + yOffset - 30)}px`;
+
+            btnIndex.style.left = `${(t2Coords.x + xOffset)}px`;
+            btnIndex.style.top = `${(t2Coords.y + yOffset - 30)}px`;
+        }
+
+        function drawStroke(ctx, x, y, length, angle, thickness, color) {
+            ctx.beginPath();
+
+            const p1x = x - Math.cos(angle) * length/2;
+            const p1y = y - Math.sin(angle) * length/2;
+            const p2x = x + Math.cos(angle) * length/2;
+            const p2y = y + Math.sin(angle) * length/2;
+
+            const bend = (Math.random() - 0.5) * length * 0.5;
+            const cpx = x + Math.cos(angle + Math.PI/2) * bend;
+            const cpy = y + Math.sin(angle + Math.PI/2) * bend;
+
+            ctx.moveTo(p1x, p1y);
+            ctx.quadraticCurveTo(cpx, cpy, p2x, p2y);
+
+            ctx.lineWidth = thickness;
+            ctx.strokeStyle = color;
+            ctx.lineCap = 'round';
+
+            ctx.shadowColor = 'rgba(0,0,0,0.4)';
+            ctx.shadowBlur = Math.max(2, thickness * 0.5);
+            ctx.shadowOffsetX = 1;
+            ctx.shadowOffsetY = 2;
+
+            ctx.globalAlpha = 0.9 + Math.random() * 0.1;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(p1x, p1y);
+            ctx.quadraticCurveTo(cpx, cpy, p2x, p2y);
+            ctx.lineWidth = thickness * 0.3;
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.shadowColor = 'transparent';
+            ctx.stroke();
+        }
+
+        function paintBackground(ctx) {
+            const count = (w * h) / 1000;
+            for(let i=0; i<count; i++) {
+                let x = Math.random() * w;
+                let y = Math.random() * h;
+                let col = P.forestBg[Math.floor(Math.random() * P.forestBg.length)];
+                let angle = Math.sin(x * 0.003) * Math.cos(y * 0.003) * Math.PI;
+                let len = 30 + Math.random() * 60;
+                let thick = 8 + Math.random() * 20;
+                drawStroke(ctx, x, y, len, angle, thick, col);
+            }
+        }
+
+        function paintMidground(ctx) {
+            const count = (w * h) / 1200;
+            for(let i=0; i<count; i++) {
+                let x = Math.random() * w;
+                let y = Math.random() * h;
+
+                if (y > h*0.3 && x > w*0.25 && x < w*0.75) {
+                    if (Math.random() > 0.2) continue;
+                }
+
+                let col = P.forestMid[Math.floor(Math.random() * P.forestMid.length)];
+                if (Math.random() > 0.95) col = P.flowers[Math.floor(Math.random() * 2)];
+
+                let angle = (Math.PI / 2) + Math.sin(x * 0.01 + y * 0.005) * 0.4;
+                let len = 20 + Math.random() * 50;
+                let thick = 6 + Math.random() * 15;
+                drawStroke(ctx, x, y, len, angle, thick, col);
+            }
+        }
+
+        function paintPath(ctx) {
+            const count = (w * h) / 800;
+            for(let i=0; i<count; i++) {
+                let y = Math.random() * h;
+                if (y < h * 0.3) continue;
+
+                let progress = (y - h*0.3) / (h*0.7);
+                let pathWidth = progress * w * 0.8;
+                let px = (w / 2) + (Math.random() - 0.5) * pathWidth;
+
+                let isFlower = Math.random() > 0.75;
+                let colArray = isFlower ? P.flowers : P.path;
+
+                let distFromCenter = Math.abs(px - w/2) / (pathWidth/2);
+                if (distFromCenter > 0.8 && !isFlower && Math.random() > 0.5) {
+                    colArray = P.forestMid;
+                }
+
+                let col = colArray[Math.floor(Math.random() * colArray.length)];
+
+                let dx = px - w/2;
+                let dy = y - h*0.3;
+                let angle = Math.atan2(dy, dx) + Math.PI/2 + (Math.random()*0.4 - 0.2);
+
+                let len = 15 + Math.random() * 30 * progress;
+                let thick = 4 + Math.random() * 12 * progress;
+                drawStroke(ctx, px, y, len, angle, thick, col);
+            }
+        }
+
+        function paintFigure(ctx, cx, cy, width, height, colors) {
+            cx += window.innerWidth * 0.05;
+            cy += window.innerHeight * 0.1;
+
+            const count = 600;
+            for(let i=0; i<count; i++) {
+                let angle = Math.random() * Math.PI * 2;
+                let r = Math.random();
+                let rx = cx + r * Math.cos(angle) * (width/2);
+                let ry = cy + r * Math.sin(angle) * (height/2);
+
+                if (Math.random() > r) {
+                    let col = colors[Math.floor(Math.random() * colors.length)];
+                    let strokeAng = Math.random() * Math.PI * 2;
+                    if(Math.random() > 0.5) strokeAng = Math.PI/2 + (Math.random()-0.5)*0.5;
+                    drawStroke(ctx, rx, ry, 10 + Math.random()*25, strokeAng, 4 + Math.random()*8, col);
+                }
+            }
+        }
+
+        async function generateArt() {
+            initCanvases();
+            const prog = document.getElementById('progress');
+            const wait = () => new Promise(r => setTimeout(r, 50));
+
+            prog.style.width = '10%';
+            await wait();
+            paintBackground(canvasLayers[0].ctx);
+
+            prog.style.width = '40%';
+            await wait();
+            paintMidground(canvasLayers[1].ctx);
+
+            prog.style.width = '70%';
+            await wait();
+            paintPath(canvasLayers[2].ctx);
+
+            prog.style.width = '90%';
+            await wait();
+            paintFigure(canvasLayers[3].ctx, t1Coords.x, t1Coords.y, w*0.08, h*0.25, P.traveler1);
+            paintFigure(canvasLayers[3].ctx, t2Coords.x, t2Coords.y, w*0.07, h*0.22, P.traveler2);
+
+            prog.style.width = '100%';
+            await wait();
+
+            const loader = document.getElementById('loader');
+            loader.style.opacity = '0';
+            setTimeout(() => loader.style.display = 'none', 1000);
+        }
+
+        /* ============================================================
+           PLAYLIST
+           ============================================================ */
+
+        const slug = location.pathname.split("/").filter(Boolean)[1];
+        const $ = (id) => document.getElementById(id);
+
+        let data = null;
+        let index = 0;
+        let player = null;
+        let ready = false;
+        let setOpen = false;
+
+        const ICON_PLAY = '<path d="M6 4l14 8-14 8V4z"/>';
+        const ICON_PAUSE = '<path d="M8 4v16M16 4v16"/>';
+
+        const tag = document.createElement("script");
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(tag);
+
+        window.onYouTubeIframeAPIReady = function () {
+            if (data && data.tracks.length) buildPlayer();
+        };
+
+        function buildPlayer() {
+            if (player) return;
+            player = new YT.Player("player", {
+                height: "100%", width: "100%",
+                videoId: data.tracks[0].youtubeId,
+                playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+                events: {
+                    onReady: () => { ready = true; },
+                    onStateChange: (e) => {
+                        if (e.data === YT.PlayerState.PLAYING) $("tp-icon").innerHTML = ICON_PAUSE;
+                        else if (e.data === YT.PlayerState.PAUSED) $("tp-icon").innerHTML = ICON_PLAY;
+                        else if (e.data === YT.PlayerState.ENDED) {
+                            if (index < data.tracks.length - 1) go(index + 1, true);
+                            else $("tp-icon").innerHTML = ICON_PLAY;
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderNote(track) {
+            const note = $("note");
+            note.replaceChildren();
+
+            const add = (cls, text) => {
+                if (!text) return;
+                const el = document.createElement("div");
+                el.className = cls;
+                el.textContent = text;
+                note.appendChild(el);
+            };
+
+            add("note-artist", track.artistName || track.artist);
+            add("note-song", track.title);
+            add("note-context", track.artistContext);
+            add("note-body", track.commentary);
+
+            if (track.contributorName) {
+                const credit = document.createElement("div");
+                credit.className = "note-credit";
+                credit.append("Added by ");
+                const who = document.createElement("b");
+                who.textContent = track.contributorName;
+                credit.appendChild(who);
+                note.appendChild(credit);
+            }
+        }
+
+        function renderIndex() {
+            const list = $("index-list");
+            list.replaceChildren();
+
+            data.tracks.forEach((t, i) => {
+                const row = document.createElement("button");
+                row.className = "index-row";
+                row.type = "button";
+                row.dataset.index = String(i);
+
+                const num = document.createElement("span");
+                num.className = "index-num";
+                num.textContent = String(i + 1).padStart(2, "0");
+
+                const body = document.createElement("span");
+                const title = document.createElement("div");
+                title.className = "index-title";
+                title.textContent = t.title;
+                const artist = document.createElement("div");
+                artist.className = "index-artist";
+                artist.textContent = t.artist;
+                body.append(title, artist);
+
+                row.append(num, body);
+                row.addEventListener("click", () => {
+                    closeIndex();
+                    openSet();
+                    go(i, true);
+                });
+                list.appendChild(row);
+            });
+        }
+
+        function go(i, autoplay) {
+            index = i;
+            const track = data.tracks[i];
+            renderNote(track);
+
+            document.querySelectorAll(".index-row").forEach((el) => {
+                el.setAttribute("aria-current", el.dataset.index === String(i) ? "true" : "false");
+            });
+
+            $("position").textContent = String(i + 1).padStart(2, "0") + " / " + String(data.tracks.length).padStart(2, "0");
+            $("prev").disabled = i === 0;
+            $("next").disabled = i === data.tracks.length - 1;
+
+            if (player && ready) {
+                if (autoplay) player.loadVideoById(track.youtubeId);
+                else player.cueVideoById(track.youtubeId);
+            }
+        }
+
+        function openSet() {
+            if (setOpen) return;
+            setOpen = true;
+            $("set").classList.add("visible");
+            $("scroll-hint").textContent = "THE SET";
+            buildPlayer();
+        }
+
+        function closeSet() {
+            setOpen = false;
+            $("set").classList.remove("visible");
+            $("scroll-hint").textContent = "SCROLL TO BEGIN";
+            if (player && ready) player.pauseVideo();
+        }
+
+        function openIndex() { $("index").classList.add("open"); }
+        function closeIndex() { $("index").classList.remove("open"); }
+
+        /* ---------------------------------------------- parallax ---- */
+
+        let currentY = 0;
+        let targetY = 0;
+        const ease = 0.08;
+
+        const layers = document.querySelectorAll('.layer');
+        const titleFx = document.getElementById('title-fx');
+
+        window.addEventListener('scroll', () => { targetY = window.scrollY; });
+
+        function animate() {
+            currentY += (targetY - currentY) * ease;
+
+            layers.forEach(layer => {
+                const speed = parseFloat(layer.getAttribute('data-speed'));
+                layer.style.transform = `translate3d(0, ${-(currentY * speed)}px, 0)`;
+            });
+
+            if (titleFx) {
+                const titleOpacity = Math.max(0, 1 - (currentY / (window.innerHeight * 0.8)));
+                titleFx.style.opacity = titleOpacity;
+                titleFx.style.transform = `translate(-50%, -50%) scale(${1 + (currentY * 0.0005)})`;
+            }
+
+            // Once the title has cleared, the set takes over.
+            if (data && data.tracks.length) {
+                if (currentY > window.innerHeight * 0.9 && !setOpen) openSet();
+                if (currentY < window.innerHeight * 0.5 && setOpen) closeSet();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        /* -------------------------------------------------- boot ---- */
+
+        async function load() {
+            try {
+                const res = await fetch("/api/playlists/" + encodeURIComponent(slug));
+                if (!res.ok) throw new Error("not found");
+                data = await res.json();
+            } catch {
+                $("loader-text").textContent = "No playlist at this link";
+                $("progress").style.background = "#C1291B";
+                return false;
+            }
+
+            document.title = data.title;
+            $("hero-title").textContent = data.title;
+            $("hero-subtitle").textContent = data.intro || "";
+            $("chrome-count").textContent = String(data.tracks.length).padStart(3, "0");
+            $("chrome-creator").textContent = data.creatorName || "—";
+            $("chrome-songs").textContent = String(data.tracks.length);
+
+            if (!data.tracks.length) {
+                $("btn-play").style.display = "none";
+                $("btn-index").style.display = "none";
+                $("scroll-hint").textContent = "NO SONGS YET";
+                return true;
+            }
+
+            renderIndex();
+            go(0, false);
+
+            $("btn-play").addEventListener("click", () => {
+                openSet();
+                window.scrollTo({ top: window.innerHeight * 1.1, behavior: "smooth" });
+                setTimeout(() => { if (player && ready) player.playVideo(); }, 700);
+            });
+            $("btn-index").addEventListener("click", openIndex);
+            $("open-index").addEventListener("click", openIndex);
+            $("index-close").addEventListener("click", closeIndex);
+
+            $("prev").addEventListener("click", () => go(Math.max(0, index - 1), true));
+            $("next").addEventListener("click", () => go(Math.min(data.tracks.length - 1, index + 1), true));
+            $("playpause").addEventListener("click", () => {
+                if (!player || !ready) return;
+                if (player.getPlayerState() === YT.PlayerState.PLAYING) player.pauseVideo();
+                else player.playVideo();
+            });
+
+            document.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") closeIndex();
+                if (!setOpen) return;
+                if (e.key === "ArrowRight") { e.preventDefault(); $("next").click(); }
+                if (e.key === "ArrowLeft") { e.preventDefault(); $("prev").click(); }
+            });
+
+            return true;
+        }
+
+        window.addEventListener('load', async () => {
+            const ok = await load();
+            if (!ok) return;
+            generateArt();
+            animate();
+        });
+
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => { location.reload(); }, 500);
+        });
+    </script>
+
+</body>
+</html>
