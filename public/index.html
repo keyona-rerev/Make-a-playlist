@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Make a Playlist</title>
+  <meta name="description" content="Build a playlist where every song comes with a note about why it is there, then share it as a link.">
+  <meta property="og:title" content="Make a Playlist">
+  <meta property="og:description" content="Build a playlist where every song comes with a note about why it is there, then share it as a link.">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="wrap wrap--narrow">
+    <header class="masthead">
+      <p class="eyebrow">Liner notes for people who overexplain</p>
+      <h1>Every song, and why.</h1>
+      <p class="lede" style="margin-top:1.25rem">
+        A list of songs is a link to Spotify. A list of songs where you explain that
+        this particular live video is the only time the band ever played it, and you
+        can hear the crowd realize it, is something a person will actually sit through.
+      </p>
+      <p class="meta" style="margin-top:1.5rem">
+        Here is one: <a href="/p/intro-to-anna">Intro to Anna</a>, twenty songs across six artists.
+      </p>
+    </header>
+
+    <section class="panel" id="form">
+      <h2 style="margin-bottom:0.5rem">Start one</h2>
+      <p class="meta" style="margin-bottom:1.5rem">
+        You add the songs on the next screen. No account, no password.
+      </p>
+
+      <div class="field">
+        <label for="title">Title</label>
+        <input id="title" maxlength="200" placeholder="Intro to Anna" autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label for="creator">Your name</label>
+        <input id="creator" maxlength="200" placeholder="Keyona" autocomplete="off">
+        <p class="hint">Shown as the person who assembled it.</p>
+      </div>
+
+      <div class="field">
+        <label for="intro">Opening note <span class="count" id="introCount">0 / 2000</span></label>
+        <textarea id="intro" maxlength="2000" placeholder="What is this playlist, and who is it for?"></textarea>
+        <p class="hint">Optional. This is what people read before the first song.</p>
+      </div>
+
+      <div id="formError" hidden></div>
+      <button id="create" type="button" class="btn-primary">Create the playlist</button>
+    </section>
+
+    <section id="done" hidden>
+      <div class="notice">
+        <strong>Your playlist exists.</strong> Two links below. They do different things,
+        and the second one is the only copy you get.
+      </div>
+
+      <div class="panel" style="margin-top:1.5rem">
+        <div class="field" style="margin-bottom:2rem">
+          <label for="shareLink">Share link — anyone can listen</label>
+          <div class="copyrow">
+            <input id="shareLink" readonly>
+            <button type="button" data-copy="shareLink">Copy</button>
+          </div>
+          <p class="hint">Read only. This is the one you send people.</p>
+        </div>
+
+        <div class="field" style="margin-bottom:0">
+          <label for="editLink">Edit link — anyone can add songs</label>
+          <div class="copyrow">
+            <input id="editLink" readonly>
+            <button type="button" data-copy="editLink">Copy</button>
+          </div>
+          <p class="hint">
+            Save this somewhere now. It is not stored anywhere you can look it up,
+            and anyone who has it can add to the playlist. That is how you invite
+            other people to contribute.
+          </p>
+        </div>
+      </div>
+
+      <p style="margin-top:1.5rem">
+        <a id="goEdit" href="#">Start adding songs</a>
+      </p>
+    </section>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+const intro = $("intro");
+intro.addEventListener("input", () => {
+  const n = intro.value.length;
+  const el = $("introCount");
+  el.textContent = n + " / 2000";
+  el.classList.toggle("over", n >= 2000);
+});
+
+function fail(message) {
+  const box = $("formError");
+  box.hidden = false;
+  box.className = "notice notice--error";
+  box.style.marginBottom = "1.25rem";
+  box.textContent = message;
+}
+
+$("create").addEventListener("click", async () => {
+  const title = $("title").value.trim();
+  if (!title) return fail("Give the playlist a title first.");
+
+  const btn = $("create");
+  btn.disabled = true;
+  btn.textContent = "Creating";
+  $("formError").hidden = true;
+
+  try {
+    const res = await fetch("/api/playlists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        creatorName: $("creator").value.trim(),
+        intro: intro.value.trim(),
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      btn.disabled = false;
+      btn.textContent = "Create the playlist";
+      return fail(body.error || "Could not create the playlist. Try again.");
+    }
+
+    const share = location.origin + "/p/" + body.slug;
+    const edit = location.origin + "/e/" + body.slug + "#" + body.editKey;
+
+    $("shareLink").value = share;
+    $("editLink").value = edit;
+    $("goEdit").href = edit;
+    $("form").hidden = true;
+    $("done").hidden = false;
+    window.scrollTo({ top: 0 });
+  } catch {
+    btn.disabled = false;
+    btn.textContent = "Create the playlist";
+    fail("Could not reach the server. Check your connection and try again.");
+  }
+});
+
+document.querySelectorAll("[data-copy]").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const input = $(btn.dataset.copy);
+    input.select();
+    try {
+      await navigator.clipboard.writeText(input.value);
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = "Copy"; }, 1600);
+    } catch {
+      btn.textContent = "Press Ctrl+C";
+    }
+  });
+});
+</script>
+</body>
+</html>
