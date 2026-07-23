@@ -1,0 +1,175 @@
+/* Make a Playlist — liner notes
+   The visual reference is the folded paper insert in a CD case: printed
+   matter, not a streaming UI. Ink ground, warm paper type, tarnished brass. */
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap");
+
+:root {
+  --ink: #10131c;
+  --ink-raised: #171b28;
+  --ink-line: #262c3d;
+  --paper: #ece6d9;
+  --paper-dim: #a9a698;
+  --brass: #c9a227;
+  --rust: #b4552d;
+  --muted: #7d8598;
+
+  --display: "Fraunces", Georgia, serif;
+  --read: "Newsreader", Georgia, serif;
+  --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --gap: 1.5rem;
+  --radius: 3px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--read);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Faint horizontal rules, like ruled insert paper. Purely atmospheric,
+   so it hides for anyone who asked for less motion or contrast. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 31px,
+    rgba(236, 230, 217, 0.022) 31px 32px
+  );
+  z-index: 0;
+}
+
+.wrap { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+.wrap--narrow { max-width: 660px; }
+
+/* ------------------------------------------------------------- typography */
+
+h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.12; letter-spacing: -0.015em; }
+h1 { font-size: clamp(2.2rem, 6vw, 3.4rem); }
+h2 { font-size: 1.4rem; }
+h3 { font-size: 1.1rem; }
+
+.eyebrow {
+  font-family: var(--ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.lede { font-size: 1.15rem; color: var(--paper-dim); max-width: 46ch; }
+.meta { font-family: var(--ui); font-size: 0.8125rem; color: var(--muted); }
+a { color: var(--brass); }
+
+/* ----------------------------------------------------------------- header */
+
+.masthead { border-bottom: 1px solid var(--ink-line); padding-bottom: 1.75rem; margin-bottom: 2rem; }
+.masthead .byline { font-family: var(--ui); font-size: 0.8125rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: 0.75rem; }
+.masthead .intro { margin-top: 1rem; max-width: 58ch; color: var(--paper-dim); font-style: italic; }
+
+/* ------------------------------------------------------------- play layout */
+
+.stage { display: grid; gap: var(--gap); grid-template-columns: 1fr; }
+@media (min-width: 900px) { .stage { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); align-items: start; } }
+
+.screen { background: #000; border: 1px solid var(--ink-line); border-radius: var(--radius); overflow: hidden; }
+.screen .frame { position: relative; padding-bottom: 56.25%; height: 0; }
+.screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
+.transport { display: flex; align-items: center; gap: 0.75rem; padding: 0.875rem; background: var(--ink-raised); border-top: 1px solid var(--ink-line); }
+.transport .spacer { flex: 1; }
+
+button {
+  font-family: var(--ui);
+  font-size: 0.875rem;
+  color: var(--paper);
+  background: transparent;
+  border: 1px solid var(--ink-line);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+button:hover { border-color: var(--brass); color: var(--brass); }
+button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+button[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary { background: var(--brass); border-color: var(--brass); color: #14161f; font-weight: 600; }
+.btn-primary:hover { background: #dab63d; border-color: #dab63d; color: #14161f; }
+.btn-danger:hover { border-color: var(--rust); color: var(--rust); }
+
+/* --------------------------------------------------------------- the note */
+
+.note { background: var(--ink-raised); border: 1px solid var(--ink-line); border-radius: var(--radius); padding: 1.75rem; }
+.note .artist { font-family: var(--display); font-size: 1.35rem; font-weight: 700; color: var(--paper); }
+.note .context { font-style: italic; color: var(--paper-dim); font-size: 0.975rem; margin-top: 0.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--ink-line); }
+.note .song { font-family: var(--display); font-size: 1.6rem; font-weight: 500; margin-top: 1.25rem; }
+.note .performer { font-family: var(--ui); font-size: 0.8125rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); margin-top: 0.35rem; }
+.note .commentary { margin-top: 1.1rem; white-space: pre-wrap; }
+.note .credit { margin-top: 1.5rem; font-family: var(--ui); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.note .credit b { color: var(--rust); font-weight: 600; }
+
+/* ------------------------------------------------------------- side/track */
+/* A mixtape has sides. Splitting the run in half is real structure, and it
+   scales to 40 tracks where a row of dots stopped working at about twelve. */
+
+.sides { margin-top: 2.5rem; display: grid; gap: 2rem; grid-template-columns: 1fr; }
+@media (min-width: 700px) { .sides { grid-template-columns: 1fr 1fr; gap: 2.5rem; } }
+
+.side-label { font-family: var(--ui); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--brass); padding-bottom: 0.6rem; border-bottom: 1px solid var(--ink-line); margin-bottom: 0.25rem; }
+
+.track { display: flex; gap: 0.9rem; width: 100%; text-align: left; align-items: baseline; padding: 0.6rem 0.5rem; border: 0; border-left: 2px solid transparent; background: transparent; border-radius: 0; }
+.track:hover { background: rgba(236, 230, 217, 0.035); border-left-color: var(--ink-line); color: var(--paper); }
+.track[aria-current="true"] { border-left-color: var(--brass); background: rgba(201, 162, 39, 0.07); }
+.track[aria-current="true"] .track-title { color: var(--brass); }
+.track-mark { font-family: var(--ui); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; color: var(--muted); min-width: 1.9rem; flex-shrink: 0; }
+.track-body { min-width: 0; }
+.track-title { font-family: var(--read); font-size: 1rem; color: var(--paper); display: block; }
+.track-artist { font-family: var(--ui); font-size: 0.75rem; color: var(--muted); display: block; margin-top: 0.1rem; }
+
+/* ------------------------------------------------------------------ forms */
+
+label { display: block; font-family: var(--ui); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.4rem; }
+input, textarea {
+  width: 100%;
+  font-family: var(--read);
+  font-size: 1rem;
+  color: var(--paper);
+  background: var(--ink);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--radius);
+  padding: 0.7rem 0.85rem;
+}
+input:focus, textarea:focus { outline: none; border-color: var(--brass); }
+textarea { resize: vertical; min-height: 6rem; line-height: 1.55; }
+.field { margin-bottom: 1.25rem; }
+.field .hint { font-family: var(--ui); font-size: 0.75rem; color: var(--muted); margin-top: 0.4rem; text-transform: none; letter-spacing: 0; }
+.count { float: right; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.count.over { color: var(--rust); }
+
+.panel { background: var(--ink-raised); border: 1px solid var(--ink-line); border-radius: var(--radius); padding: 1.75rem; }
+
+/* ---------------------------------------------------------------- notices */
+
+.notice { border-left: 2px solid var(--brass); background: rgba(201, 162, 39, 0.07); padding: 1rem 1.15rem; border-radius: 0 var(--radius) var(--radius) 0; font-size: 0.95rem; }
+.notice--error { border-left-color: var(--rust); background: rgba(180, 85, 45, 0.1); }
+.empty { border: 1px dashed var(--ink-line); border-radius: var(--radius); padding: 2.5rem 1.5rem; text-align: center; color: var(--muted); }
+
+.copyrow { display: flex; gap: 0.5rem; align-items: stretch; margin-top: 0.5rem; }
+.copyrow input { font-family: var(--ui); font-size: 0.8125rem; }
+.copyrow button { white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  body::before { display: none; }
+}
