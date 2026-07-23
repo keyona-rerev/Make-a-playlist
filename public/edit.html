@@ -64,6 +64,18 @@
         </div>
       </section>
 
+      <section class="panel" style="margin-top:2.5rem">
+        <h2 style="margin-bottom:1.5rem">The look</h2>
+        <div class="field" style="margin-bottom:0">
+          <label for="theme">Design</label>
+          <select id="theme">
+            <option value="">Liner notes</option>
+            <option value="birthday">Painted scene</option>
+          </select>
+          <p class="hint" id="themeStatus">Changes apply the moment you pick one.</p>
+        </div>
+      </section>
+
       <section style="margin-top:2.5rem">
         <h2 style="margin-bottom:1rem">In the playlist</h2>
         <div id="list"></div>
@@ -285,6 +297,7 @@ async function load() {
   $("title").textContent = data.title;
   $("byline").textContent = data.creatorName ? "Assembled by " + data.creatorName : "";
   $("viewLink").href = "/p/" + slug;
+  $("theme").value = data.theme || "";
   renderList();
 }
 
@@ -311,6 +324,28 @@ async function boot() {
 
   $("gate").hidden = true;
   $("main").hidden = false;
+
+  $("theme").addEventListener("change", async () => {
+    const status = $("themeStatus");
+    const chosen = $("theme").value;
+    status.textContent = "Saving";
+    try {
+      const res = await api("/api/playlists/" + slug, {
+        method: "PATCH",
+        body: JSON.stringify({ theme: chosen }),
+      });
+      if (!res.ok) {
+        status.textContent = "Could not save that. Try again.";
+        return;
+      }
+      const updated = await res.json();
+      data.theme = updated.theme;
+      $("theme").value = updated.theme || "";
+      status.textContent = "Saved. Reload the share link to see it.";
+    } catch {
+      status.textContent = "Could not reach the server. Try again.";
+    }
+  });
 }
 
 boot();
