@@ -73,11 +73,14 @@
     <div class="index" id="index">
         <button class="sys-text sys-link index-close" id="index-close" type="button">Close</button>
         <div class="index-inner" id="index-list"></div>
+        <p style="max-width:900px;margin:2.5rem auto 0">
+            <a href="/" class="sys-text sys-link">Make a playlist of your own</a>
+        </p>
     </div>
 
     <div class="ui-chrome">
         <div class="ui-top">
-            <div class="sys-text"><span id="chrome-eyebrow">SET</span> <span id="chrome-count" style="color:var(--c-text-primary)"></span></div>
+            <a href="/mine" class="sys-text sys-link">&larr; Your playlists</a>
             <button class="sys-text sys-link" id="open-index" type="button">TRACKLIST</button>
         </div>
 
@@ -489,7 +492,6 @@
             document.title = data.title;
             $("hero-title").textContent = data.title;
             $("hero-subtitle").textContent = data.intro || "";
-            $("chrome-count").textContent = String(data.tracks.length).padStart(3, "0");
             $("chrome-creator").textContent = data.creatorName || "—";
             $("chrome-songs").textContent = String(data.tracks.length);
 
