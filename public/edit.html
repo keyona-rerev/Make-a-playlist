@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add to the playlist</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="wrap wrap--narrow">
+    <header class="masthead">
+      <p class="eyebrow">Edit mode</p>
+      <h1 id="title">Loading</h1>
+      <p class="byline" id="byline"></p>
+    </header>
+
+    <div id="gate" hidden></div>
+
+    <main id="main" hidden>
+      <section class="panel">
+        <h2 style="margin-bottom:1.5rem">Add a song</h2>
+
+        <div class="field">
+          <label for="url">YouTube link</label>
+          <input id="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+          <p class="hint" id="urlHint">Paste it and the title fills itself in.</p>
+        </div>
+
+        <div id="details" hidden>
+          <div class="field">
+            <label for="tTitle">Song title</label>
+            <input id="tTitle" maxlength="200" autocomplete="off">
+          </div>
+
+          <div class="field">
+            <label for="tArtist">Artist</label>
+            <input id="tArtist" maxlength="200" autocomplete="off">
+          </div>
+
+          <div class="field">
+            <label for="tCommentary">
+              Why this song <span class="count" id="cCount">0 / 2000</span>
+            </label>
+            <textarea id="tCommentary" maxlength="2000"
+              placeholder="Why this song, and why this particular video."></textarea>
+            <p class="hint">This is the part people are here for.</p>
+          </div>
+
+          <div class="field">
+            <label for="tContext">About the artist</label>
+            <textarea id="tContext" maxlength="2000" style="min-height:4rem"
+              placeholder="Optional. Context for anyone who does not know them."></textarea>
+          </div>
+
+          <div class="field">
+            <label for="tContributor">Your name</label>
+            <input id="tContributor" maxlength="200" autocomplete="off">
+            <p class="hint">Shown as "added by" on the track.</p>
+          </div>
+
+          <div id="addError" hidden></div>
+          <button id="add" type="button" class="btn-primary">Add to the playlist</button>
+        </div>
+      </section>
+
+      <section style="margin-top:2.5rem">
+        <h2 style="margin-bottom:1rem">In the playlist</h2>
+        <div id="list"></div>
+      </section>
+
+      <p class="meta" style="margin-top:2.5rem">
+        <a id="viewLink" href="#">See how it looks to everyone else</a>
+      </p>
+    </main>
+  </div>
+
+<script>
+const slug = location.pathname.split("/").filter(Boolean)[1];
+const key = location.hash.slice(1);
+let data = null;
+
+const $ = (id) => document.getElementById(id);
+const api = (path, options = {}) =>
+  fetch(path, {
+    ...options,
+    headers: { "Content-Type": "application/json", "X-Edit-Key": key, ...(options.headers || {}) },
+  });
+
+function blocked(message) {
+  const box = $("gate");
+  box.hidden = false;
+  box.className = "notice notice--error";
+  box.textContent = message;
+  $("title").textContent = "Cannot edit";
+}
+
+function setError(id, message) {
+  const box = $(id);
+  if (!message) { box.hidden = true; return; }
+  box.hidden = false;
+  box.className = "notice notice--error";
+  box.style.marginBottom = "1.25rem";
+  box.textContent = message;
+}
+
+/* ------------------------------------------------------- youtube parsing */
+
+function videoIdFrom(input) {
+  const raw = input.trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
+  let url;
+  try { url = new URL(raw); } catch { return null; }
+  if (url.hostname.includes("youtu.be")) return url.pathname.slice(1).split("/")[0] || null;
+  if (url.searchParams.get("v")) return url.searchParams.get("v");
+  const parts = url.pathname.split("/").filter(Boolean);
+  const marker = parts.findIndex((p) => p === "shorts" || p === "embed" || p === "live");
+  if (marker !== -1 && parts[marker + 1]) return parts[marker + 1];
+  return null;
+}
+
+let currentVideoId = null;
+
+$("url").addEventListener("input", async () => {
+  const id = videoIdFrom($("url").value);
+  const hint = $("urlHint");
+
+  if (!id || !/^[A-Za-z0-9_-]{11}$/.test(id)) {
+    currentVideoId = null;
+    $("details").hidden = true;
+    hint.textContent = $("url").value.trim()
+      ? "That does not look like a YouTube link yet."
+      : "Paste it and the title fills itself in.";
+    return;
+  }
+  if (id === currentVideoId) return;
+
+  currentVideoId = id;
+  hint.textContent = "Looking it up";
+  $("details").hidden = false;
+
+  try {
+    const res = await fetch("/api/oembed?videoId=" + encodeURIComponent(id));
+    if (res.ok) {
+      const info = await res.json();
+      if (!$("tTitle").value) $("tTitle").value = (info.title || "").slice(0, 200);
+      if (!$("tArtist").value) {
+        $("tArtist").value = (info.author || "").replace(/\s*-\s*Topic$/, "").slice(0, 200);
+      }
+      hint.textContent = "Found it. Edit anything below that looks wrong.";
+    } else {
+      hint.textContent = "Could not find that video, but you can still type it in by hand.";
+    }
+  } catch {
+    hint.textContent = "Lookup failed. Type the title in by hand.";
+  }
+});
+
+const commentary = $("tCommentary");
+commentary.addEventListener("input", () => {
+  const n = commentary.value.length;
+  const el = $("cCount");
+  el.textContent = n + " / 2000";
+  el.classList.toggle("over", n >= 2000);
+});
+
+/* ---------------------------------------------------------------- render */
+
+function renderList() {
+  const list = $("list");
+  list.replaceChildren();
+
+  if (!data.tracks.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "No songs yet. The first one goes above.";
+    list.appendChild(empty);
+    return;
+  }
+
+  data.tracks.forEach((t, i) => {
+    const row = document.createElement("div");
+    row.className = "panel";
+    row.style.marginBottom = "0.75rem";
+    row.style.display = "flex";
+    row.style.gap = "1rem";
+    row.style.alignItems = "flex-start";
+    row.style.padding = "1rem 1.25rem";
+
+    const num = document.createElement("span");
+    num.className = "track-mark";
+    num.textContent = String(i + 1).padStart(2, "0");
+
+    const body = document.createElement("div");
+    body.style.flex = "1";
+    body.style.minWidth = "0";
+
+    const name = document.createElement("p");
+    name.style.fontWeight = "500";
+    name.textContent = t.title;
+
+    const who = document.createElement("p");
+    who.className = "meta";
+    who.textContent = [t.artist, t.contributorName ? "added by " + t.contributorName : ""]
+      .filter(Boolean)
+      .join(" \u00b7 ");
+
+    body.append(name, who);
+
+    if (t.commentary) {
+      const note = document.createElement("p");
+      note.style.marginTop = "0.5rem";
+      note.style.fontSize = "0.95rem";
+      note.style.color = "var(--paper-dim)";
+      note.textContent = t.commentary;
+      body.appendChild(note);
+    }
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn-danger";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", async () => {
+      remove.disabled = true;
+      const res = await api("/api/playlists/" + slug + "/tracks/" + t.id, { method: "DELETE" });
+      if (res.ok) { await load(); } else { remove.disabled = false; }
+    });
+
+    row.append(num, body, remove);
+    list.appendChild(row);
+  });
+}
+
+$("add").addEventListener("click", async () => {
+  setError("addError", "");
+  if (!currentVideoId) return setError("addError", "Paste a YouTube link first.");
+  const title = $("tTitle").value.trim();
+  if (!title) return setError("addError", "The song needs a title.");
+
+  const btn = $("add");
+  btn.disabled = true;
+  btn.textContent = "Adding";
+
+  try {
+    const res = await api("/api/playlists/" + slug + "/tracks", {
+      method: "POST",
+      body: JSON.stringify({
+        youtubeId: currentVideoId,
+        title,
+        artist: $("tArtist").value.trim(),
+        artistName: $("tArtist").value.trim(),
+        artistContext: $("tContext").value.trim(),
+        commentary: commentary.value.trim(),
+        contributorName: $("tContributor").value.trim(),
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError("addError", body.error || "Could not add that song.");
+    } else {
+      const keepName = $("tContributor").value;
+      ["url", "tTitle", "tArtist", "tCommentary", "tContext"].forEach((id) => { $(id).value = ""; });
+      $("tContributor").value = keepName;
+      $("cCount").textContent = "0 / 2000";
+      currentVideoId = null;
+      $("details").hidden = true;
+      $("urlHint").textContent = "Added. Paste the next one.";
+      await load();
+    }
+  } catch {
+    setError("addError", "Could not reach the server. Try again.");
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Add to the playlist";
+});
+
+/* ------------------------------------------------------------------ boot */
+
+async function load() {
+  const res = await fetch("/api/playlists/" + encodeURIComponent(slug));
+  if (!res.ok) { blocked("There is no playlist at this link."); return; }
+  data = await res.json();
+
+  $("title").textContent = data.title;
+  $("byline").textContent = data.creatorName ? "Assembled by " + data.creatorName : "";
+  $("viewLink").href = "/p/" + slug;
+  renderList();
+}
+
+async function boot() {
+  if (!key) {
+    return blocked(
+      "This link is missing its edit key. The full link ends in a # followed by a long code. " +
+      "Ask whoever sent it to you for the complete link."
+    );
+  }
+
+  await load();
+  if (!data) return;
+
+  // Confirm the key works before showing the form, so a bad key fails here
+  // rather than after someone has written three paragraphs of commentary.
+  const check = await api("/api/playlists/" + slug, {
+    method: "PATCH",
+    body: JSON.stringify({}),
+  });
+  if (check.status === 403) {
+    return blocked("That edit key is not valid for this playlist. Check that you copied the whole link.");
+  }
+
+  $("gate").hidden = true;
+  $("main").hidden = false;
+}
+
+boot();
+</script>
+</body>
+</html>
