@@ -48,7 +48,28 @@
 
         canvas { display: block; width: 100%; height: 100%; }
 
-        #layer-fg { pointer-events: auto; }
+        /* Clouds the painted midground so the type has something quiet to sit
+           on. Sits above the back three layers but below the travelers, so the
+           figures and their buttons stay crisp. */
+        .scrim {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 75% 55% at 50% 42%,
+                    rgba(17, 10, 20, 0.78) 0%,
+                    rgba(17, 10, 20, 0.55) 40%,
+                    rgba(17, 10, 20, 0.15) 70%,
+                    rgba(17, 10, 20, 0) 85%),
+                linear-gradient(to bottom,
+                    rgba(17, 10, 20, 0.7) 0%,
+                    rgba(17, 10, 20, 0) 20%,
+                    rgba(17, 10, 20, 0) 76%,
+                    rgba(17, 10, 20, 0.75) 100%);
+        }
+
+        #layer-fg { pointer-events: auto; z-index: 3; }
 
         .ui-chrome {
             position: fixed;
@@ -71,6 +92,7 @@
             font-weight: 500;
             color: var(--c-text-primary);
             pointer-events: auto;
+            text-shadow: 0 1px 10px rgba(17, 10, 20, 0.95), 0 0 3px rgba(17, 10, 20, 0.9);
         }
 
         .sys-text span { color: var(--c-text-muted); margin-right: 8px; }
@@ -99,10 +121,12 @@
             color: var(--c-text-muted);
             letter-spacing: 0;
             text-transform: none;
+            text-shadow: 0 1px 10px rgba(17, 10, 20, 0.95);
         }
 
         .title-container {
             position: absolute;
+            z-index: 4;
             top: 45%; left: 50%;
             transform: translate(-50%, -50%);
             text-align: center;
@@ -120,7 +144,7 @@
             letter-spacing: -0.03em;
             margin: 0;
             color: #F2ECCC;
-            text-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-shadow: 0 2px 18px rgba(17, 10, 20, 0.9), 0 10px 40px rgba(17, 10, 20, 0.75);
             padding: 0 1rem;
         }
 
@@ -132,6 +156,7 @@
             color: var(--c-accent);
             font-weight: 600;
             padding: 0 1.5rem;
+            text-shadow: 0 2px 12px rgba(17, 10, 20, 0.95);
         }
 
         .artifact-btn {
@@ -405,6 +430,8 @@
                 <div class="artifact-label">The tracklist</div>
             </button>
         </div>
+
+        <div class="scrim"></div>
 
         <div class="title-container" id="title-fx">
             <h1 id="hero-title">&nbsp;</h1>
