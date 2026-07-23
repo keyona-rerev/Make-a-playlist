@@ -11,6 +11,11 @@
 </head>
 <body>
   <div class="wrap wrap--narrow">
+    <nav class="topbar">
+      <span class="home">Make a playlist</span>
+      <a href="/mine" id="navMine" hidden>Your playlists</a>
+    </nav>
+
     <header class="masthead">
       <p class="eyebrow">Liner notes for people who overexplain</p>
       <h1>Every song, and why.</h1>
@@ -83,8 +88,8 @@
             <button type="button" data-copy="editLink">Copy</button>
           </div>
           <p class="hint">
-            Save this somewhere now. It is not stored anywhere you can look it up,
-            and anyone who has it can add to the playlist. That is how you invite
+            Saved to this browser under Your playlists, but keep your own copy too.
+            Anyone who has it can add to the playlist. That is how you invite
             other people to contribute.
           </p>
         </div>
@@ -92,12 +97,30 @@
 
       <p style="margin-top:1.5rem">
         <a id="goEdit" href="#">Start adding songs</a>
+        &nbsp;·&nbsp;
+        <a href="/mine">All your playlists</a>
       </p>
     </section>
   </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
+const STORE = "map.playlists";
+
+function saved() {
+  try { return JSON.parse(localStorage.getItem(STORE) || "[]"); }
+  catch { return []; }
+}
+
+// The edit key is the only copy that exists, so it is kept here too. Device
+// local, same as the list itself. No accounts means nowhere else to put it.
+function remember(slug, key, title) {
+  const list = saved().filter((p) => p.slug !== slug);
+  list.unshift({ slug, key, title, savedAt: Date.now() });
+  try { localStorage.setItem(STORE, JSON.stringify(list)); } catch {}
+}
+
+if (saved().length) $("navMine").hidden = false;
 
 const THEME_HINTS = {
   "": "Dark and typographic, built for reading long notes.",
@@ -151,6 +174,8 @@ $("create").addEventListener("click", async () => {
       btn.textContent = "Create the playlist";
       return fail(body.error || "Could not create the playlist. Try again.");
     }
+
+    remember(body.slug, body.editKey, title);
 
     const share = location.origin + "/p/" + body.slug;
     const edit = location.origin + "/e/" + body.slug + "#" + body.editKey;
