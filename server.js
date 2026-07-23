@@ -47,7 +47,33 @@ CREATE TABLE IF NOT EXISTS playlist_tracks (
 CREATE INDEX IF NOT EXISTS idx_tracks_playlist ON playlist_tracks (playlist_id, position);
 
 ALTER TABLE playlists ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS users (
+  id           BIGSERIAL PRIMARY KEY,
+  google_sub   TEXT UNIQUE NOT NULL,
+  email        TEXT NOT NULL,
+  display_name TEXT NOT NULL DEFAULT '',
+  avatar_url   TEXT NOT NULL DEFAULT '',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One row per login rather than one token column per user, so signing in on
+-- your phone does not silently kill the session on your laptop.
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+
+ALTER TABLE playlists ADD COLUMN IF NOT EXISTS owner_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE playlist_tracks ADD COLUMN IF NOT EXISTS contributor_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_playlists_owner ON playlists (owner_id);
+CREATE INDEX IF NOT EXISTS idx_tracks_contributor ON playlist_tracks (contributor_user_id);
 `;
+
+const SESSION_DAYS = 30;
 
 // Templates a playlist can be rendered with. Anything not listed falls back
 // to the default liner-notes page.
@@ -112,6 +138,41 @@ setInterval(() => {
   }
 }, 600000).unref();
 
+/* ------------------------------------------------------------------ cookies */
+// Parsed by hand so the dependency list stays at express and pg.
+
+function cookies(req) {
+  const out = {};
+  (req.headers.cookie || "").split(";").forEach((part) => {
+    const i = part.indexOf("=");
+    if (i > -1) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  });
+  return out;
+}
+
+function setCookie(res, name, value, maxAgeSeconds) {
+  const parts = [`${name}=${encodeURIComponent(value)}`, "Path=/", "HttpOnly", "SameSite=Lax"];
+  if (maxAgeSeconds !== null) parts.push(`Max-Age=${maxAgeSeconds}`);
+  if (process.env.NODE_ENV !== "development") parts.push("Secure");
+  const prev = res.getHeader("Set-Cookie");
+  res.setHeader("Set-Cookie", prev ? [].concat(prev, parts.join("; ")) : parts.join("; "));
+}
+
+const clearCookie = (res, name) => setCookie(res, name, "", 0);
+
+/* -------------------------------------------------------------------- oauth */
+
+const oauthReady = () =>
+  Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+
+function baseUrl(req) {
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, "");
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) return "https://" + process.env.RAILWAY_PUBLIC_DOMAIN;
+  return `${req.protocol}://${req.get("host")}`;
+}
+
+const redirectUri = (req) => baseUrl(req) + "/auth/google/callback";
+
 /* ------------------------------------------------------------------ helpers */
 
 const clean = (v, max) => String(v ?? "").trim().slice(0, max);
@@ -140,6 +201,7 @@ function publicShape(playlist, tracks) {
     intro: playlist.intro,
     creatorName: playlist.creator_name,
     theme: playlist.theme || "",
+    hasOwner: Boolean(playlist.owner_id),
     viewCount: playlist.view_count,
     tracks: tracks.map((t) => ({
       id: t.id,
@@ -151,30 +213,223 @@ function publicShape(playlist, tracks) {
       artistContext: t.artist_context,
       commentary: t.commentary,
       contributorName: t.contributor_name,
+      verified: Boolean(t.contributor_user_id),
     })),
   };
 }
 
-// Loads the playlist and verifies the edit key from the X-Edit-Key header.
+/* ---------------------------------------------------------------- sessions */
+
+async function newSession(userId) {
+  const token = randomId(40);
+  await pool.query(
+    `INSERT INTO sessions (token_hash, user_id, expires_at)
+     VALUES ($1, $2, now() + ($3 || ' days')::interval)`,
+    [hashToken(token), userId, String(SESSION_DAYS)]
+  );
+  return token;
+}
+
+async function loadSession(req) {
+  const token = cookies(req).sid;
+  if (!token) return null;
+  const { rows } = await pool.query(
+    `SELECT u.*, s.token_hash FROM sessions s
+       JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = $1 AND s.expires_at > now()`,
+    [hashToken(token)]
+  );
+  if (!rows[0]) return null;
+
+  // Sliding expiry, so an active person is never logged out mid-use.
+  pool
+    .query(
+      `UPDATE sessions SET expires_at = now() + ($2 || ' days')::interval WHERE token_hash = $1`,
+      [rows[0].token_hash, String(SESSION_DAYS)]
+    )
+    .catch(() => {});
+
+  return rows[0];
+}
+
+app.use(express.json({ limit: "256kb" }));
+app.set("trust proxy", 1);
+
+app.use(async (req, res, next) => {
+  try { req.user = await loadSession(req); } catch { req.user = null; }
+  next();
+});
+
+/* ----------------------------------------------------------- authorization */
+// Two ways in, and the edit key never stops working. Links already sent out
+// have to keep functioning, so accounts are additive rather than a gate.
+
+const holdsEditKey = (req, playlist) =>
+  tokenMatches(req.get("X-Edit-Key"), playlist.edit_token_hash);
+
+const ownsIt = (req, playlist) =>
+  Boolean(req.user && playlist.owner_id && String(playlist.owner_id) === String(req.user.id));
+
 async function requireEditKey(req, res) {
   const found = await loadPlaylist(req.params.slug);
   if (!found) {
     res.status(404).json({ error: "No playlist with that link." });
     return null;
   }
-  if (!tokenMatches(req.get("X-Edit-Key"), found.playlist.edit_token_hash)) {
-    res.status(403).json({ error: "That edit key is not valid for this playlist." });
+  if (!holdsEditKey(req, found.playlist) && !ownsIt(req, found.playlist)) {
+    res.status(403).json({ error: "You need the edit link for this playlist, or to be signed in as its owner." });
     return null;
   }
   return found;
 }
 
-app.use(express.json({ limit: "256kb" }));
-app.set("trust proxy", 1);
-
 /* --------------------------------------------------------------------- api */
 
-app.get("/healthz", (req, res) => res.json({ ok: true }));
+app.get("/healthz", (req, res) => res.json({ ok: true, signIn: oauthReady() }));
+
+/* ------------------------------------------------------------ auth routes */
+
+app.get("/api/me", (req, res) => {
+  res.json({
+    signInAvailable: oauthReady(),
+    user: req.user
+      ? { id: req.user.id, name: req.user.display_name, email: req.user.email, avatar: req.user.avatar_url }
+      : null,
+  });
+});
+
+app.get("/auth/google", (req, res) => {
+  if (!oauthReady()) return res.redirect("/?signin=unavailable");
+
+  const state = randomId(24);
+  setCookie(res, "oauth_state", state, 600);
+  setCookie(res, "oauth_next", clean(req.query.next, 300) || "/mine", 600);
+
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
+  url.searchParams.set("redirect_uri", redirectUri(req));
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", "openid email profile");
+  url.searchParams.set("state", state);
+  url.searchParams.set("prompt", "select_account");
+  res.redirect(url.toString());
+});
+
+app.get("/auth/google/callback", async (req, res, next) => {
+  if (!oauthReady()) return res.redirect("/?signin=unavailable");
+
+  const jar = cookies(req);
+  clearCookie(res, "oauth_state");
+  clearCookie(res, "oauth_next");
+
+  if (!req.query.code || !req.query.state || req.query.state !== jar.oauth_state) {
+    return res.redirect("/?signin=failed");
+  }
+
+  try {
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code: String(req.query.code),
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri(req),
+        grant_type: "authorization_code",
+      }),
+    });
+    if (!tokenRes.ok) return res.redirect("/?signin=failed");
+
+    const { id_token: idToken } = await tokenRes.json();
+    if (!idToken) return res.redirect("/?signin=failed");
+
+    // The token came straight from Google over TLS in a server-to-server
+    // exchange, so the payload can be read without re-verifying the signature.
+    const payload = JSON.parse(Buffer.from(idToken.split(".")[1], "base64url").toString("utf8"));
+    if (!payload.sub || !payload.email) return res.redirect("/?signin=failed");
+
+    const { rows } = await pool.query(
+      `INSERT INTO users (google_sub, email, display_name, avatar_url)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (google_sub) DO UPDATE
+         SET email = EXCLUDED.email,
+             display_name = EXCLUDED.display_name,
+             avatar_url = EXCLUDED.avatar_url
+       RETURNING *`,
+      [
+        payload.sub,
+        clean(payload.email, MAX_SHORT),
+        clean(payload.name || payload.given_name || "", MAX_SHORT),
+        clean(payload.picture || "", 500),
+      ]
+    );
+
+    const token = await newSession(rows[0].id);
+    setCookie(res, "sid", token, SESSION_DAYS * 24 * 3600);
+
+    const next = jar.oauth_next && jar.oauth_next.startsWith("/") ? jar.oauth_next : "/mine";
+    res.redirect(next);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/auth/signout", async (req, res) => {
+  const token = cookies(req).sid;
+  if (token) await pool.query("DELETE FROM sessions WHERE token_hash = $1", [hashToken(token)]);
+  clearCookie(res, "sid");
+  res.json({ ok: true });
+});
+
+/* ------------------------------------------------------ owned playlists */
+
+app.get("/api/my/playlists", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Sign in to see your playlists." });
+
+  const { rows } = await pool.query(
+    `SELECT p.*,
+            (SELECT count(*) FROM playlist_tracks t WHERE t.playlist_id = p.id) AS track_count,
+            (p.owner_id = $1) AS is_owner
+       FROM playlists p
+      WHERE p.owner_id = $1
+         OR EXISTS (SELECT 1 FROM playlist_tracks t
+                     WHERE t.playlist_id = p.id AND t.contributor_user_id = $1)
+      ORDER BY p.updated_at DESC`,
+    [req.user.id]
+  );
+
+  res.json({
+    playlists: rows.map((p) => ({
+      slug: p.slug,
+      title: p.title,
+      creatorName: p.creator_name,
+      theme: p.theme || "",
+      trackCount: Number(p.track_count),
+      isOwner: p.is_owner,
+      updatedAt: p.updated_at,
+    })),
+  });
+});
+
+// Signing in and opening an edit link once turns an ownerless playlist into
+// yours. First claim wins, so a link you hand out cannot take it from you.
+app.post("/api/playlists/:slug/claim", async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Sign in first." });
+
+  const found = await loadPlaylist(req.params.slug);
+  if (!found) return res.status(404).json({ error: "No playlist with that link." });
+
+  const p = found.playlist;
+  if (p.owner_id) {
+    return res.json({ claimed: ownsIt(req, p), alreadyOwned: true, mine: ownsIt(req, p) });
+  }
+  if (!holdsEditKey(req, p)) {
+    return res.status(403).json({ error: "You need this playlist's edit link to claim it." });
+  }
+
+  await pool.query("UPDATE playlists SET owner_id = $1 WHERE id = $2 AND owner_id IS NULL", [req.user.id, p.id]);
+  res.json({ claimed: true, alreadyOwned: false, mine: true });
+});
 
 // Proxied because YouTube's oEmbed endpoint sends no CORS headers,
 // so the browser cannot call it directly.
@@ -201,8 +456,8 @@ app.post("/api/playlists", rateLimit(5, 3600000), async (req, res) => {
   const editToken = randomId(32);
 
   const { rows } = await pool.query(
-    `INSERT INTO playlists (slug, edit_token_hash, title, intro, creator_name, theme)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    `INSERT INTO playlists (slug, edit_token_hash, title, intro, creator_name, theme, owner_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
     [
       slug,
       hashToken(editToken),
@@ -210,6 +465,7 @@ app.post("/api/playlists", rateLimit(5, 3600000), async (req, res) => {
       clean(req.body.intro, MAX_COMMENTARY),
       clean(req.body.creatorName, MAX_SHORT),
       THEMES[req.body.theme] ? req.body.theme : "",
+      req.user ? req.user.id : null,
     ]
   );
 
@@ -264,8 +520,8 @@ app.post("/api/playlists/:slug/tracks", async (req, res) => {
 
   const { rows } = await pool.query(
     `INSERT INTO playlist_tracks
-       (playlist_id, position, title, artist, youtube_id, artist_name, artist_context, commentary, contributor_name)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+       (playlist_id, position, title, artist, youtube_id, artist_name, artist_context, commentary, contributor_name, contributor_user_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [
       found.playlist.id,
       nextPosition,
@@ -275,7 +531,9 @@ app.post("/api/playlists/:slug/tracks", async (req, res) => {
       clean(req.body.artistName, MAX_SHORT),
       clean(req.body.artistContext, MAX_COMMENTARY),
       clean(req.body.commentary, MAX_COMMENTARY),
-      clean(req.body.contributorName, MAX_SHORT),
+      // A signed-in contributor gets their real name, not a typed one.
+      req.user ? clean(req.user.display_name, MAX_SHORT) : clean(req.body.contributorName, MAX_SHORT),
+      req.user ? req.user.id : null,
     ]
   );
 
