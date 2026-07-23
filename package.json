@@ -1,0 +1,17 @@
+{
+  "name": "make-a-playlist",
+  "version": "1.0.0",
+  "description": "Build a playlist with commentary and share it as a link.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0"
+  }
+}
