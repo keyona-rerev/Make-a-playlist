@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--OG-->
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="masthead">
+      <p class="eyebrow">Liner notes</p>
+      <h1 id="title">Loading</h1>
+      <p class="byline" id="byline"></p>
+      <p class="intro" id="intro"></p>
+    </header>
+
+    <div id="error" hidden></div>
+
+    <main class="stage" id="stage" hidden>
+      <div class="screen">
+        <div class="frame"><div id="player"></div></div>
+        <div class="transport">
+          <button id="prev" type="button">Previous</button>
+          <button id="playpause" type="button" class="btn-primary">Play</button>
+          <button id="next" type="button">Next</button>
+          <span class="spacer"></span>
+          <span class="meta" id="position"></span>
+        </div>
+      </div>
+
+      <article class="note" id="note"></article>
+    </main>
+
+    <section class="sides" id="sides" hidden></section>
+
+    <p class="meta" style="margin-top:3rem">
+      <a href="/">Make your own playlist</a>
+    </p>
+  </div>
+
+<script>
+const slug = location.pathname.split("/").filter(Boolean)[1];
+let data = null;
+let index = 0;
+let player = null;
+let ready = false;
+
+const $ = (id) => document.getElementById(id);
+
+function showError(message) {
+  const box = $("error");
+  box.hidden = false;
+  box.className = "notice notice--error";
+  box.textContent = message;
+  $("title").textContent = "Not found";
+}
+
+/* -------------------------------------------------------- YouTube player */
+// The original version faked pause by reloading the iframe, which restarted
+// the song from zero. This uses the real player API so pause is pause, and
+// so a finished track rolls into the next one on its own.
+
+const tag = document.createElement("script");
+tag.src = "https://www.youtube.com/iframe_api";
+document.head.appendChild(tag);
+
+window.onYouTubeIframeAPIReady = function () {
+  if (!data || !data.tracks.length) return;
+  buildPlayer();
+};
+
+function buildPlayer() {
+  player = new YT.Player("player", {
+    height: "100%",
+    width: "100%",
+    videoId: data.tracks[0].youtubeId,
+    playerVars: { rel: 0, modestbranding: 1, playsinline: 1 },
+    events: {
+      onReady: () => { ready = true; },
+      onStateChange: (e) => {
+        if (e.data === YT.PlayerState.PLAYING) $("playpause").textContent = "Pause";
+        else if (e.data === YT.PlayerState.PAUSED) $("playpause").textContent = "Play";
+        else if (e.data === YT.PlayerState.ENDED) {
+          if (index < data.tracks.length - 1) go(index + 1, true);
+          else $("playpause").textContent = "Play";
+        }
+      },
+    },
+  });
+}
+
+/* ----------------------------------------------------------------- render */
+
+function renderNote(track) {
+  const note = $("note");
+  note.replaceChildren();
+
+  const add = (cls, text, tag) => {
+    if (!text) return null;
+    const el = document.createElement(tag || "p");
+    el.className = cls;
+    el.textContent = text;
+    note.appendChild(el);
+    return el;
+  };
+
+  add("artist", track.artistName || track.artist, "h2");
+  add("context", track.artistContext);
+  add("song", track.title, "h3");
+  add("performer", track.artist);
+  add("commentary", track.commentary);
+
+  if (track.contributorName) {
+    const credit = document.createElement("p");
+    credit.className = "credit";
+    credit.append("Added by ");
+    const who = document.createElement("b");
+    who.textContent = track.contributorName;
+    credit.appendChild(who);
+    note.appendChild(credit);
+  }
+}
+
+function markFor(i, total) {
+  const half = Math.ceil(total / 2);
+  return i < half ? "A" + (i + 1) : "B" + (i - half + 1);
+}
+
+function renderSides() {
+  const total = data.tracks.length;
+  const half = Math.ceil(total / 2);
+  const sides = $("sides");
+  sides.replaceChildren();
+  sides.hidden = false;
+
+  [["Side A", 0, half], ["Side B", half, total]].forEach(([label, from, to]) => {
+    if (from >= to) return;
+    const col = document.createElement("div");
+    const heading = document.createElement("p");
+    heading.className = "side-label";
+    heading.textContent = label;
+    col.appendChild(heading);
+
+    for (let i = from; i < to; i++) {
+      const t = data.tracks[i];
+      const btn = document.createElement("button");
+      btn.className = "track";
+      btn.type = "button";
+      btn.dataset.index = String(i);
+
+      const mark = document.createElement("span");
+      mark.className = "track-mark";
+      mark.textContent = markFor(i, total);
+
+      const body = document.createElement("span");
+      body.className = "track-body";
+      const name = document.createElement("span");
+      name.className = "track-title";
+      name.textContent = t.title;
+      const who = document.createElement("span");
+      who.className = "track-artist";
+      who.textContent = t.artist;
+      body.append(name, who);
+
+      btn.append(mark, body);
+      btn.addEventListener("click", () => go(i, true));
+      col.appendChild(btn);
+    }
+    sides.appendChild(col);
+  });
+}
+
+function go(i, autoplay) {
+  index = i;
+  const track = data.tracks[i];
+  renderNote(track);
+
+  document.querySelectorAll(".track").forEach((el) => {
+    el.setAttribute("aria-current", el.dataset.index === String(i) ? "true" : "false");
+  });
+
+  $("position").textContent = markFor(i, data.tracks.length) + " of " + data.tracks.length;
+  $("prev").disabled = i === 0;
+  $("next").disabled = i === data.tracks.length - 1;
+
+  if (player && ready) {
+    if (autoplay) player.loadVideoById(track.youtubeId);
+    else player.cueVideoById(track.youtubeId);
+  }
+}
+
+/* ------------------------------------------------------------------- boot */
+
+async function load() {
+  try {
+    const res = await fetch("/api/playlists/" + encodeURIComponent(slug));
+    if (!res.ok) return showError("There is no playlist at this link. It may have been mistyped.");
+    data = await res.json();
+  } catch {
+    return showError("Could not load this playlist. Check your connection and reload.");
+  }
+
+  document.title = data.title + (data.creatorName ? " by " + data.creatorName : "");
+  $("title").textContent = data.title;
+  $("byline").textContent = data.creatorName ? "Assembled by " + data.creatorName : "";
+  $("intro").textContent = data.intro || "";
+
+  if (!data.tracks.length) {
+    $("error").hidden = false;
+    $("error").className = "empty";
+    $("error").textContent = "This playlist does not have any songs in it yet.";
+    return;
+  }
+
+  $("stage").hidden = false;
+  renderSides();
+  go(0, false);
+  if (window.YT && window.YT.Player) buildPlayer();
+
+  $("prev").addEventListener("click", () => go(Math.max(0, index - 1), true));
+  $("next").addEventListener("click", () => go(Math.min(data.tracks.length - 1, index + 1), true));
+  $("playpause").addEventListener("click", () => {
+    if (!player || !ready) return;
+    const state = player.getPlayerState();
+    if (state === YT.PlayerState.PLAYING) player.pauseVideo();
+    else player.playVideo();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, textarea")) return;
+    if (e.key === "ArrowRight") { e.preventDefault(); $("next").click(); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); $("prev").click(); }
+  });
+}
+
+load();
+</script>
+</body>
+</html>
