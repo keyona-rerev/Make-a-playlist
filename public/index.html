@@ -9,6 +9,14 @@
   <meta property="og:title" content="Make a Playlist">
   <meta property="og:description" content="Build a playlist where every song comes with a note about why it is there, then share it as a link.">
   <link rel="stylesheet" href="/home.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <div class="blob-container">
@@ -120,6 +128,10 @@
           </p>
         </div>
       </section>
+
+      <div class="tunnel" id="tunnel">
+        <span class="tunnel-label">Side A / Side B</span>
+      </div>
 
     </main>
 
@@ -299,6 +311,172 @@ function setNowSpinning(list) {
 }
 
 loadNowSpinning();
+</script>
+
+<script type="module">
+/* ---------------------------------------------------------------- tunnel */
+/* A camera flying through a twisting ribbon, scoped to the panel in the
+   middle column rather than the whole window. Palette is warm-biased to sit
+   with the rest of the page, with a few cool notes so it does not go flat. */
+
+import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+
+const mount = document.getElementById("tunnel");
+const PAGE_BG = 0x1a1108;
+
+function ribbonTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 2048;
+  canvas.height = 16;
+  const ctx = canvas.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, canvas.width, 0);
+
+  g.addColorStop(0.00, "#D67229");
+  g.addColorStop(0.07, "#E6A020");
+  g.addColorStop(0.15, "#8A1C0A");
+  g.addColorStop(0.22, "#C1291B");
+  g.addColorStop(0.30, "#4D22A8");
+  g.addColorStop(0.37, "#008B9B");
+  g.addColorStop(0.45, "#E6C100");
+  g.addColorStop(0.54, "#F25B80");
+  g.addColorStop(0.62, "#6A3415");
+  g.addColorStop(0.70, "#FF7A00");
+  g.addColorStop(0.78, "#2B1810");
+  g.addColorStop(0.86, "#E31418");
+  g.addColorStop(0.93, "#F4A1BB");
+  g.addColorStop(1.00, "#D67229");
+
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+function initTunnel() {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(PAGE_BG);
+  scene.fog = new THREE.Fog(PAGE_BG, 20, 200);
+
+  const width = mount.clientWidth || 1;
+  const height = mount.clientHeight || 1;
+
+  const camera = new THREE.PerspectiveCamera(62, width / height, 0.1, 1000);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: false });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  mount.appendChild(renderer.domElement);
+
+  const points = [];
+  for (let i = 0; i < 200; i++) {
+    const angle = i * 0.5;
+    const radius = 15;
+    points.push(new THREE.Vector3(
+      Math.sin(angle) * radius * (Math.sin(i * 0.1) * 0.5 + 0.5),
+      Math.cos(angle * 0.8) * (radius * 0.6),
+      i * -8
+    ));
+  }
+
+  const curve = new THREE.CatmullRomCurve3(points);
+  const geometry = new THREE.TubeGeometry(curve, 1000, 3.5, 32, false);
+
+  // Stretch the gradient along the tube so the colours band rather than smear.
+  const uvs = geometry.attributes.uv;
+  for (let i = 0; i < uvs.count; i++) uvs.setX(i, uvs.getX(i) * 15);
+  uvs.needsUpdate = true;
+
+  // Unlit on purpose: against a near-black page a shaded material just sinks,
+  // where a flat one keeps the ribbon's colour and lets fog carry the depth.
+  scene.add(new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+    map: ribbonTexture(),
+    side: THREE.DoubleSide,
+    fog: true,
+  })));
+
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+
+  const grain = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, amount: { value: 0.08 }, time: { value: 0 } },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform float amount;
+      uniform float time;
+      varying vec2 vUv;
+      float random(vec2 p) {
+        vec2 K1 = vec2(23.14069263277926, 2.665144142690225);
+        return fract(cos(dot(p, K1)) * 12345.6789);
+      }
+      void main() {
+        vec4 color = texture2D(tDiffuse, vUv);
+        float noise = random(vUv + vec2(time * 0.1)) * amount;
+        color.rgb -= noise;
+        gl_FragColor = color;
+      }`,
+  });
+  composer.addPass(grain);
+
+  const clock = new THREE.Clock();
+  let progress = 0;
+
+  function place() {
+    const at = (progress * 0.9) % 1;
+    camera.position.copy(curve.getPointAt(at));
+    camera.lookAt(curve.getPointAt((at + 0.01) % 1));
+  }
+
+  function resize() {
+    const w = mount.clientWidth || 1;
+    const h = mount.clientHeight || 1;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+    composer.setSize(w, h);
+  }
+  new ResizeObserver(resize).observe(mount);
+
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (still.matches) {
+    progress = 0.15;
+    place();
+    composer.render();
+    return;
+  }
+
+  // Only runs while the panel is actually on screen and the tab is focused,
+  // so scrolling past it or switching tabs stops the work.
+  let visible = true;
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; })
+    .observe(mount);
+
+  function frame() {
+    requestAnimationFrame(frame);
+    if (!visible || document.hidden) return;
+    progress = (progress + 0.0005) % 1;
+    place();
+    grain.uniforms.time.value = clock.getElapsedTime();
+    composer.render();
+  }
+  frame();
+}
+
+if (mount) {
+  try { initTunnel(); }
+  catch { mount.remove(); }  // No WebGL: drop the panel rather than leave a hole.
+}
 </script>
 </body>
 </html>
