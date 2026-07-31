@@ -25,7 +25,7 @@
       <div class="nav-group">
         <div class="nav-label">Menu</div>
         <a class="nav-item active" href="/">Home</a>
-        <a class="nav-item" href="#browse">Browse all</a>
+        <a class="nav-item" href="/browse">Browse all</a>
         <a class="nav-item" href="/mine" id="navMine" hidden>Your playlists</a>
       </div>
 
@@ -85,7 +85,7 @@
 
           <div id="formError" hidden></div>
           <button id="create" type="button" class="btn-primary">Create the playlist</button>
-          <p class="hint" style="margin-top:14px">It will show up in Browse all below the moment it exists — that is the default, for everyone.</p>
+          <p class="hint" style="margin-top:14px">It will show up in Browse all the moment it exists — that is the default, for everyone.</p>
         </div>
 
         <div id="done" hidden>
@@ -121,22 +121,6 @@
         </div>
       </section>
 
-      <section class="browse" id="browse">
-        <div class="browse-head">
-          <h2>Everyone's playlists</h2>
-          <span class="browse-count" id="browseCount"></span>
-        </div>
-        <div class="track-list" id="browseList">
-          <div class="track-row track-row--head">
-            <div>#</div>
-            <div>Playlist</div>
-            <div>Assembled by</div>
-            <div style="text-align:right">Songs</div>
-          </div>
-        </div>
-        <p class="empty" id="browseEmpty" hidden>Nobody has made one yet — be the first, above.</p>
-        <p class="empty" id="browseError" hidden>Could not load the playlist list. Refresh to try again.</p>
-      </section>
     </main>
 
     <aside class="rail">
@@ -249,7 +233,7 @@ $("create").addEventListener("click", async () => {
     $("done").hidden = false;
     $("navMine").hidden = false;
     createPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-    loadBrowse();
+    loadNowSpinning();
   } catch {
     btn.disabled = false;
     btn.textContent = "Create the playlist";
@@ -271,59 +255,20 @@ document.querySelectorAll("[data-copy]").forEach((btn) => {
   });
 });
 
-/* ------------------------------------------------------------------ browse */
+/* -------------------------------------------------------------- now spinning */
 
 function coverUrl(youtubeId) {
   return youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/default.jpg` : "";
 }
 
-function trackRow(p, index) {
-  const cover = coverUrl(p.coverYoutubeId);
-  const songLabel = p.trackCount === 1 ? "1 song" : `${p.trackCount} songs`;
-  const by = p.creatorName || "Someone";
-  return `
-    <a class="track-row" href="/p/${p.slug}">
-      <div class="num">${index}</div>
-      <div class="titlecell">
-        ${cover ? `<img class="cover" src="${cover}" alt="" loading="lazy">` : `<div class="cover"></div>`}
-        <div class="titletext">
-          <div class="t">${escapeHtml(p.title)}</div>
-        </div>
-      </div>
-      <div class="by">${escapeHtml(by)}</div>
-      <div class="songs">${songLabel}</div>
-    </a>`;
-}
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-  }[c]));
-}
-
-async function loadBrowse() {
+async function loadNowSpinning() {
   try {
     const res = await fetch("/api/playlists?limit=60");
     if (!res.ok) throw new Error("bad response");
     const body = await res.json();
-    const list = body.playlists || [];
-
-    const listEl = $("browseList");
-    listEl.querySelectorAll(".track-row:not(.track-row--head)").forEach((el) => el.remove());
-    listEl.insertAdjacentHTML(
-      "beforeend",
-      list.map((p, i) => trackRow(p, i + 1)).join("")
-    );
-
-    $("browseCount").textContent = list.length
-      ? `${list.length} playlist${list.length === 1 ? "" : "s"}`
-      : "";
-    $("browseEmpty").hidden = list.length !== 0;
-    $("browseError").hidden = true;
-
-    setNowSpinning(list);
+    setNowSpinning(body.playlists || []);
   } catch {
-    $("browseError").hidden = false;
+    // Quiet failure — the rail panel below still explains Browse all either way.
   }
 }
 
@@ -345,7 +290,7 @@ function setNowSpinning(list) {
   panel.hidden = false;
 }
 
-loadBrowse();
+loadNowSpinning();
 </script>
 </body>
 </html>
