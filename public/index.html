@@ -162,11 +162,19 @@ if (saved().length) $("navMine").hidden = false;
 /* ------------------------------------------------------------ create panel */
 
 const createPanel = $("createPanel");
-$("openCreate").addEventListener("click", () => {
+
+function openCreate() {
   createPanel.hidden = false;
   createPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-});
+  $("title").focus({ preventScroll: true });
+}
+
+$("openCreate").addEventListener("click", openCreate);
 $("closeCreate").addEventListener("click", () => { createPanel.hidden = true; });
+
+// "+ New playlist" on the other pages links here with ?new=1, so the panel
+// is already open on arrival rather than the click appearing to do nothing.
+if (new URLSearchParams(location.search).has("new")) openCreate();
 
 const THEME_HINTS = {
   "": "Dark and typographic, built for reading long notes.",
