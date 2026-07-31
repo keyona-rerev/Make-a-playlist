@@ -1,8 +1,9 @@
 /* Make a Playlist — homepage / waiting room
    Adapted from a glass-music-player reference. Kept to a single typeface
    (Inter) at varied weights, the way the reference did, rather than
-   pairing in a display face. Scoped to this page only — /p, /e, and /mine
-   keep the liner-notes theme in app.css. */
+   pairing in a display face. Scoped to this page only — /p and /e keep
+   the liner-notes theme in app.css. /mine now shares this stylesheet too,
+   as site chrome rather than playlist "look". */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
@@ -449,6 +450,46 @@ a.track-row:hover { background: rgba(255, 255, 255, 0.08); }
 }
 .rail-panel strong { color: var(--text); }
 .rail-panel a { text-decoration: underline; text-underline-offset: 3px; color: var(--text); }
+
+/* -------------------------------------------------------------- mine page */
+
+.shell--two-col { grid-template-columns: 240px 1fr; }
+
+.mine-list { display: flex; flex-direction: column; gap: 20px; }
+
+.card {
+  background: var(--glass-bg);
+  backdrop-filter: var(--bg-blur);
+  border: var(--glass-border);
+  border-radius: var(--r-lg);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.28), var(--glass-inner-glow);
+  padding: 28px;
+}
+
+.card h3 { font-size: 19px; font-weight: 500; margin-bottom: 6px; }
+.card-meta { font-size: 13px; color: var(--text-dim); margin-bottom: 22px; }
+.card .field { margin-bottom: 16px; }
+.card .field:last-of-type { margin-bottom: 0; }
+
+.card-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+}
+
+.card-actions a, .card-actions button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text);
+  border-radius: var(--r-pill);
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.card-actions a:hover, .card-actions button:hover { background: rgba(255, 255, 255, 0.16); }
 
 /* --------------------------------------------------------------- mobile */
 
