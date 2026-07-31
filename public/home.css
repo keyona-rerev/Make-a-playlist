@@ -107,7 +107,7 @@ a { color: inherit; text-decoration: none; }
   z-index: 1;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 28px 24px 80px;
+  padding: 64px 24px 80px;
   display: grid;
   grid-template-columns: 240px 1fr 300px;
   gap: 24px;
@@ -118,7 +118,7 @@ a { color: inherit; text-decoration: none; }
 
 .sidebar {
   position: sticky;
-  top: 28px;
+  top: 64px;
   background: rgba(0, 0, 0, 0.3);
   backdrop-filter: var(--bg-blur);
   border: var(--glass-border);
@@ -417,7 +417,7 @@ a.track-row:hover {
 
 /* ------------------------------------------------------------------- rail */
 
-.rail { position: sticky; top: 28px; display: flex; flex-direction: column; gap: 20px; }
+.rail { position: sticky; top: 64px; display: flex; flex-direction: column; gap: 20px; }
 
 .now-spinning {
   background: rgba(0, 0, 0, 0.3);
@@ -550,7 +550,7 @@ a.track-row:hover {
 }
 
 @media (max-width: 560px) {
-  .shell { padding: 18px 14px 60px; }
+  .shell { padding: 28px 14px 60px; }
   .panel { padding: 22px; }
 }
 
