@@ -71,6 +71,11 @@ ALTER TABLE playlists ADD COLUMN IF NOT EXISTS owner_id BIGINT REFERENCES users(
 ALTER TABLE playlist_tracks ADD COLUMN IF NOT EXISTS contributor_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_playlists_owner ON playlists (owner_id);
 CREATE INDEX IF NOT EXISTS idx_tracks_contributor ON playlist_tracks (contributor_user_id);
+
+-- Public by default: the homepage's Browse all is the discovery surface,
+-- so every playlist is listed there unless this is later flipped to false.
+ALTER TABLE playlists ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT true;
+CREATE INDEX IF NOT EXISTS idx_playlists_public ON playlists (is_public, updated_at DESC);
 `;
 
 const SESSION_DAYS = 30;
@@ -446,6 +451,39 @@ app.get("/api/oembed", async (req, res) => {
   } catch {
     res.status(502).json({ error: "Could not reach YouTube. Try again." });
   }
+});
+
+// Browse-all: the homepage's discovery surface. Every playlist is public by
+// default (see is_public in the schema), so this simply lists the most
+// recently updated ones with enough to render a row: cover art comes from
+// the first track's YouTube thumbnail.
+app.get("/api/playlists", async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 60, 1), 100);
+  const { rows } = await pool.query(
+    `SELECT p.*,
+            (SELECT count(*) FROM playlist_tracks t WHERE t.playlist_id = p.id) AS track_count,
+            (SELECT youtube_id FROM playlist_tracks t
+              WHERE t.playlist_id = p.id ORDER BY t.position ASC, t.id ASC LIMIT 1) AS cover_youtube_id
+       FROM playlists p
+      WHERE p.is_public = true
+      ORDER BY p.updated_at DESC
+      LIMIT $1`,
+    [limit]
+  );
+
+  res.json({
+    playlists: rows.map((p) => ({
+      slug: p.slug,
+      title: p.title,
+      creatorName: p.creator_name,
+      theme: p.theme || "",
+      trackCount: Number(p.track_count),
+      viewCount: p.view_count,
+      coverYoutubeId: p.cover_youtube_id || null,
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+    })),
+  });
 });
 
 app.post("/api/playlists", rateLimit(5, 3600000), async (req, res) => {
