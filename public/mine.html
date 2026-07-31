@@ -3,34 +3,54 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Your playlists</title>
+  <title>Your playlists — Make a Playlist</title>
   <meta name="robots" content="noindex">
-  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/home.css">
 </head>
 <body>
-  <div class="wrap wrap--narrow">
-    <nav class="topbar">
-      <a href="/" class="home">Make a playlist</a>
-      <span>Your playlists</span>
-    </nav>
+  <div class="shell shell--two-col">
 
-    <header class="masthead">
-      <p class="eyebrow">This device</p>
-      <h1>Your playlists</h1>
-      <p class="lede" style="margin-top:1.25rem">
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark"></span> Make a playlist</a>
+
+      <div class="nav-group">
+        <div class="nav-label">Menu</div>
+        <a class="nav-item" href="/">Home</a>
+        <a class="nav-item" href="/#browse">Browse all</a>
+        <a class="nav-item active" href="/mine">Your playlists</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Get started</div>
+        <a class="nav-item nav-item--cta" href="/">+ New playlist</a>
+      </div>
+
+      <p class="sidebar-note">This list lives in this browser only — there is no account behind it yet.</p>
+    </aside>
+
+    <main class="main">
+      <header class="header">
+        <div>
+          <p class="eyebrow">This device</p>
+          <h1>Your playlists</h1>
+        </div>
+      </header>
+
+      <p class="lede">
         Every playlist you have made or opened an edit link for, on this browser.
         Both links for each one are below.
       </p>
-    </header>
 
-    <div id="list"></div>
+      <div class="mine-list" id="list"></div>
 
-    <div class="notice" style="margin-top:2.5rem">
-      <strong>This list lives in this browser.</strong> There are no accounts, so it
-      does not follow you to your phone or survive clearing your browsing data. The
-      links themselves never expire. Keep the edit links somewhere you trust and you
-      can always get back in.
-    </div>
+      <div class="rail-panel">
+        <strong>This list lives in this browser.</strong> There are no accounts, so it
+        does not follow you to your phone or survive clearing your browsing data. The
+        links themselves never expire. Keep the edit links somewhere you trust and you
+        can always get back in. Every playlist is still public in <a href="/#browse">Browse all</a> either way.
+      </div>
+    </main>
+
   </div>
 
 <script>
@@ -51,7 +71,6 @@ function forget(slug) {
 function copyRow(labelText, value) {
   const field = document.createElement("div");
   field.className = "field";
-  field.style.marginBottom = "1rem";
 
   const label = document.createElement("label");
   label.textContent = labelText;
@@ -89,7 +108,7 @@ async function render() {
   const entries = saved();
   if (!entries.length) {
     const empty = document.createElement("div");
-    empty.className = "empty";
+    empty.className = "panel empty";
     empty.textContent = "Nothing here yet. Make a playlist and it will show up.";
     list.appendChild(empty);
     return;
