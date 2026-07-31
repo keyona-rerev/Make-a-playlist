@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Browse all — Make a Playlist</title>
+  <meta name="description" content="Every playlist made with Make a Playlist, browsable in one place.">
+  <link rel="stylesheet" href="/home.css">
+</head>
+<body>
+  <div class="blob-container">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <div class="shell shell--two-col">
+
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark"></span> Make a playlist</a>
+
+      <div class="nav-group">
+        <div class="nav-label">Menu</div>
+        <a class="nav-item" href="/">Home</a>
+        <a class="nav-item active" href="/browse">Browse all</a>
+        <a class="nav-item" href="/mine" id="navMine" hidden>Your playlists</a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-label">Get started</div>
+        <a class="nav-item nav-item--cta" href="/">+ New playlist</a>
+      </div>
+
+      <p class="sidebar-note">No account needed to listen, or to start one. Sign in only if you want your playlists to follow you around.</p>
+    </aside>
+
+    <main class="main">
+      <header class="header">
+        <div>
+          <h1>Everyone's playlists</h1>
+        </div>
+      </header>
+
+      <p class="lede">
+        Every playlist made here, newest first. Anyone can listen — that is the
+        default, for everyone.
+      </p>
+
+      <section class="browse" id="browse">
+        <div class="browse-head">
+          <h2>All playlists</h2>
+          <span class="browse-count" id="browseCount"></span>
+        </div>
+        <div class="track-list" id="browseList">
+          <div class="track-row track-row--head">
+            <div>#</div>
+            <div>Playlist</div>
+            <div>Assembled by</div>
+            <div style="text-align:right">Songs</div>
+          </div>
+        </div>
+        <p class="empty" id="browseEmpty" hidden>Nobody has made one yet — <a href="/">be the first</a>.</p>
+        <p class="empty" id="browseError" hidden>Could not load the playlist list. Refresh to try again.</p>
+      </section>
+    </main>
+
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const STORE = "map.playlists";
+
+function saved() {
+  try { return JSON.parse(localStorage.getItem(STORE) || "[]"); }
+  catch { return []; }
+}
+
+if (saved().length) $("navMine").hidden = false;
+
+function coverUrl(youtubeId) {
+  return youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/default.jpg` : "";
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function trackRow(p, index) {
+  const cover = coverUrl(p.coverYoutubeId);
+  const songLabel = p.trackCount === 1 ? "1 song" : `${p.trackCount} songs`;
+  const by = p.creatorName || "Someone";
+  return `
+    <a class="track-row" href="/p/${p.slug}">
+      <div class="num">${index}</div>
+      <div class="titlecell">
+        ${cover ? `<img class="cover" src="${cover}" alt="" loading="lazy">` : `<div class="cover"></div>`}
+        <div class="titletext">
+          <div class="t">${escapeHtml(p.title)}</div>
+        </div>
+      </div>
+      <div class="by">${escapeHtml(by)}</div>
+      <div class="songs">${songLabel}</div>
+    </a>`;
+}
+
+async function loadBrowse() {
+  try {
+    const res = await fetch("/api/playlists?limit=100");
+    if (!res.ok) throw new Error("bad response");
+    const body = await res.json();
+    const list = body.playlists || [];
+
+    const listEl = $("browseList");
+    listEl.querySelectorAll(".track-row:not(.track-row--head)").forEach((el) => el.remove());
+    listEl.insertAdjacentHTML(
+      "beforeend",
+      list.map((p, i) => trackRow(p, i + 1)).join("")
+    );
+
+    $("browseCount").textContent = list.length
+      ? `${list.length} playlist${list.length === 1 ? "" : "s"}`
+      : "";
+    $("browseEmpty").hidden = list.length !== 0;
+    $("browseError").hidden = true;
+  } catch {
+    $("browseError").hidden = false;
+  }
+}
+
+loadBrowse();
+</script>
+</body>
+</html>
