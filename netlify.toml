@@ -1,0 +1,54 @@
+# Netlify serves the front end; Railway keeps the API and the database.
+#
+# This is the split the README described from the start. Netlify puts the
+# static pages on a CDN and owns the domain, and everything that needs a
+# server or the database is proxied through to Railway, so there is one
+# origin from the browser's point of view — which matters for the session
+# cookie and for the edit key never crossing origins.
+
+[build]
+  publish = "public"
+  command = ""
+
+# Rendered by the API, not the CDN. Crawlers do not run JavaScript, so the
+# playlist's real title and cover have to be in the HTML for a link to unfurl
+# properly in a group chat.
+[[redirects]]
+  from = "/p/*"
+  to = "https://web-production-98c566.up.railway.app/p/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://web-production-98c566.up.railway.app/api/:splat"
+  status = 200
+  force = true
+
+# Proxied rather than redirected so the session cookie is set on this origin.
+# A 30x here would land people on the Railway domain and strand the session there.
+[[redirects]]
+  from = "/auth/*"
+  to = "https://web-production-98c566.up.railway.app/auth/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/healthz"
+  to = "https://web-production-98c566.up.railway.app/healthz"
+  status = 200
+  force = true
+
+# The edit page is a static shell that fetches its own data, and the edit key
+# lives in the fragment, which never leaves the browser. No reason to make a
+# round trip to Railway for it.
+[[redirects]]
+  from = "/e/*"
+  to = "/edit.html"
+  status = 200
+
+# Only reached when nothing above matched and no file exists at the path.
+[[redirects]]
+  from = "/*"
+  to = "/404.html"
+  status = 404
