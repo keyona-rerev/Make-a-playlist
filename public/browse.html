@@ -33,6 +33,7 @@
       </div>
 
       <p class="sidebar-note">No account needed to listen, or to start one. Sign in only if you want your playlists to follow you around.</p>
+      <div class="account-slot" data-account></div>
     </aside>
 
     <main class="main">
@@ -43,14 +44,27 @@
       </header>
 
       <p class="lede">
-        Every playlist made here, newest first. Anyone can listen — that is the
-        default, for everyone.
+        Every playlist people chose to list here. Anyone can listen, and nothing
+        below is empty — a playlist appears once it has a song in it.
       </p>
 
       <section class="browse" id="browse">
+        <div class="browse-controls">
+          <label class="sr-only" for="q">Search playlists</label>
+          <input id="q" type="search" placeholder="Search by title or who made it" autocomplete="off">
+          <label class="sr-only" for="sort">Sort by</label>
+          <select id="sort">
+            <option value="recent">Recently updated</option>
+            <option value="new">Newest</option>
+            <option value="popular">Most played</option>
+            <option value="songs">Most songs</option>
+            <option value="title">Title A–Z</option>
+          </select>
+        </div>
+
         <div class="browse-head">
-          <h2>All playlists</h2>
-          <span class="browse-count" id="browseCount"></span>
+          <h2 id="browseHeading">All playlists</h2>
+          <span class="browse-count" id="browseCount" role="status" aria-live="polite"></span>
         </div>
         <div class="track-list" id="browseList">
           <div class="track-row track-row--head">
@@ -60,23 +74,17 @@
             <div style="text-align:right">Songs</div>
           </div>
         </div>
-        <p class="empty" id="browseEmpty" hidden>Nobody has made one yet — <a href="/?new=1">be the first</a>.</p>
+        <p class="empty" id="browseEmpty" hidden></p>
         <p class="empty" id="browseError" hidden>Could not load the playlist list. Refresh to try again.</p>
+        <div class="load-more"><button id="loadMore" type="button" class="btn-ghost" hidden>Show more</button></div>
       </section>
     </main>
 
   </div>
 
+<script src="/account.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
-const STORE = "map.playlists";
-
-function saved() {
-  try { return JSON.parse(localStorage.getItem(STORE) || "[]"); }
-  catch { return []; }
-}
-
-if (saved().length) $("navMine").hidden = false;
 
 function coverUrl(youtubeId) {
   return youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/default.jpg` : "";
@@ -88,10 +96,14 @@ function escapeHtml(s) {
   }[c]));
 }
 
+function plural(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 function trackRow(p, index) {
   const cover = coverUrl(p.coverYoutubeId);
-  const songLabel = p.trackCount === 1 ? "1 song" : `${p.trackCount} songs`;
   const by = p.creatorName || "Someone";
+  const plays = p.viewCount ? ` · ${plural(p.viewCount, "play", "plays")}` : "";
   return `
     <a class="track-row" href="/p/${p.slug}">
       <div class="num">${index}</div>
@@ -99,38 +111,89 @@ function trackRow(p, index) {
         ${cover ? `<img class="cover" src="${cover}" alt="" loading="lazy">` : `<div class="cover"></div>`}
         <div class="titletext">
           <div class="t">${escapeHtml(p.title)}</div>
+          <div class="m">${escapeHtml(plural(p.trackCount, "song", "songs") + plays)}</div>
         </div>
       </div>
       <div class="by">${escapeHtml(by)}</div>
-      <div class="songs">${songLabel}</div>
+      <div class="songs">${p.trackCount}</div>
     </a>`;
 }
 
-async function loadBrowse() {
+const PAGE = 24;
+let offset = 0;
+let shown = 0;
+let pending = null;
+
+function currentQuery() {
+  return { q: $("q").value.trim(), sort: $("sort").value };
+}
+
+async function loadBrowse(append) {
+  if (!append) {
+    offset = 0;
+    shown = 0;
+  }
+
+  const { q, sort } = currentQuery();
+
+  // Each keystroke supersedes the last, so a slow early response cannot
+  // overwrite the results for what is currently typed.
+  const ticket = {};
+  pending = ticket;
+
+  const btn = $("loadMore");
+  btn.disabled = true;
+
   try {
-    const res = await fetch("/api/playlists?limit=100");
+    const res = await fetch(
+      `/api/playlists?limit=${PAGE}&offset=${offset}` +
+        `&sort=${encodeURIComponent(sort)}&q=${encodeURIComponent(q)}`
+    );
     if (!res.ok) throw new Error("bad response");
     const body = await res.json();
+    if (pending !== ticket) return;
+
     const list = body.playlists || [];
-
     const listEl = $("browseList");
-    listEl.querySelectorAll(".track-row:not(.track-row--head)").forEach((el) => el.remove());
-    listEl.insertAdjacentHTML(
-      "beforeend",
-      list.map((p, i) => trackRow(p, i + 1)).join("")
-    );
+    if (!append) {
+      listEl.querySelectorAll(".track-row:not(.track-row--head)").forEach((el) => el.remove());
+    }
+    listEl.insertAdjacentHTML("beforeend", list.map((p, i) => trackRow(p, shown + i + 1)).join(""));
 
-    $("browseCount").textContent = list.length
-      ? `${list.length} playlist${list.length === 1 ? "" : "s"}`
+    shown += list.length;
+    offset += list.length;
+
+    $("browseHeading").textContent = q ? "Matching playlists" : "All playlists";
+    $("browseCount").textContent = shown
+      ? plural(shown, "playlist", "playlists") + (body.hasMore ? " so far" : "")
       : "";
-    $("browseEmpty").hidden = list.length !== 0;
+
+    const empty = $("browseEmpty");
+    empty.hidden = shown !== 0;
+    empty.innerHTML = q
+      ? `Nothing matches “${escapeHtml(q)}”.`
+      : `Nobody has made one yet — <a href="/?new=1">be the first</a>.`;
+
+    btn.hidden = !body.hasMore;
     $("browseError").hidden = true;
   } catch {
+    if (pending !== ticket) return;
     $("browseError").hidden = false;
+    btn.hidden = true;
+  } finally {
+    btn.disabled = false;
   }
 }
 
-loadBrowse();
+let debounce;
+$("q").addEventListener("input", () => {
+  clearTimeout(debounce);
+  debounce = setTimeout(() => loadBrowse(false), 250);
+});
+$("sort").addEventListener("change", () => loadBrowse(false));
+$("loadMore").addEventListener("click", () => loadBrowse(true));
+
+loadBrowse(false);
 </script>
 </body>
 </html>

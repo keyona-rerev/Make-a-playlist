@@ -82,7 +82,10 @@
     <div class="ui-chrome">
         <div class="ui-top">
             <a href="/mine" class="sys-text sys-link">&larr; Your playlists</a>
-            <button class="sys-text sys-link" id="open-index" type="button">TRACKLIST</button>
+            <span>
+                <button class="sys-text sys-link" id="share" type="button">SHARE</button>
+                <button class="sys-text sys-link" id="open-index" type="button" style="margin-left:1.5rem">TRACKLIST</button>
+            </span>
         </div>
 
         <div class="ui-bottom">
@@ -95,9 +98,14 @@
                 <div id="chrome-creator"></div>
                 <div style="margin-top: 1rem;" class="data-label">Songs</div>
                 <div id="chrome-songs"></div>
+                <div style="margin-top: 1rem;" class="data-label" id="chrome-plays-label" hidden>Plays</div>
+                <div id="chrome-plays" hidden></div>
             </div>
         </div>
     </div>
+
+    <p id="announce" role="status" aria-live="polite"
+       style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap"></p>
 
     <script>
         /* ============================================================
@@ -418,6 +426,9 @@
             $("position").textContent = String(i + 1).padStart(2, "0") + " / " + String(data.tracks.length).padStart(2, "0");
             $("prev").disabled = i === 0;
             $("next").disabled = i === data.tracks.length - 1;
+            $("announce").textContent =
+                `Track ${i + 1} of ${data.tracks.length}: ${track.title}` +
+                (track.artist ? ` by ${track.artist}` : "");
 
             if (player && ready) {
                 if (autoplay) player.loadVideoById(track.youtubeId);
@@ -481,7 +492,9 @@
 
         async function load() {
             try {
-                const res = await fetch("/api/playlists/" + encodeURIComponent(slug));
+                // count=1 marks this as a real listen; other pages read the
+                // same endpoint without it so the number stays meaningful.
+                const res = await fetch("/api/playlists/" + encodeURIComponent(slug) + "?count=1");
                 if (!res.ok) throw new Error("not found");
                 data = await res.json();
             } catch {
@@ -495,6 +508,32 @@
             $("hero-subtitle").textContent = data.intro || "";
             $("chrome-creator").textContent = data.creatorName || "—";
             $("chrome-songs").textContent = String(data.tracks.length);
+
+            if (data.viewCount) {
+                $("chrome-plays-label").hidden = false;
+                $("chrome-plays").hidden = false;
+                $("chrome-plays").textContent = String(data.viewCount);
+            }
+
+            $("share").addEventListener("click", async () => {
+                const url = location.origin + "/p/" + slug;
+                if (navigator.share) {
+                    try {
+                        await navigator.share({ title: data.title, url });
+                        return;
+                    } catch {
+                        // Dismissed — fall through to the clipboard.
+                    }
+                }
+                try {
+                    await navigator.clipboard.writeText(url);
+                    $("share").textContent = "COPIED";
+                    $("announce").textContent = "Link copied to clipboard";
+                    setTimeout(() => { $("share").textContent = "SHARE"; }, 1800);
+                } catch {
+                    $("announce").textContent = url;
+                }
+            });
 
             if (!data.tracks.length) {
                 $("btn-play").style.display = "none";

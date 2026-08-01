@@ -14,9 +14,16 @@
       <h1 id="title">Loading</h1>
       <p class="byline" id="byline"></p>
       <p class="intro" id="intro"></p>
+      <div class="masthead-actions" id="actions" hidden>
+        <button id="share" type="button">Share this playlist</button>
+        <span class="meta" id="stats"></span>
+      </div>
     </header>
 
     <div id="error" hidden></div>
+
+    <!-- The track changes without the page moving, so the change is announced. -->
+    <p class="sr-only" id="announce" role="status" aria-live="polite"></p>
 
     <main class="stage" id="stage" hidden>
       <div class="screen">
@@ -36,7 +43,7 @@
     <section class="sides" id="sides" hidden></section>
 
     <p class="meta" style="margin-top:3rem">
-      <a href="/">Make your own playlist</a>
+      <a href="/">Make your own playlist</a> · <a href="/browse">Browse everyone else's</a>
     </p>
   </div>
 
@@ -184,6 +191,9 @@ function go(i, autoplay) {
   $("position").textContent = markFor(i, data.tracks.length) + " of " + data.tracks.length;
   $("prev").disabled = i === 0;
   $("next").disabled = i === data.tracks.length - 1;
+  $("announce").textContent =
+    `Track ${i + 1} of ${data.tracks.length}: ${track.title}` +
+    (track.artist ? ` by ${track.artist}` : "");
 
   if (player && ready) {
     if (autoplay) player.loadVideoById(track.youtubeId);
@@ -191,11 +201,51 @@ function go(i, autoplay) {
   }
 }
 
+/* ------------------------------------------------------------------ share */
+// This page is the thing people are meant to pass around, so it says so.
+// The count is displayed rather than merely collected — it is the only
+// feedback a creator gets that anyone actually listened.
+
+function setUpSharing() {
+  const plays = data.viewCount || 0;
+  const songs = data.tracks.length;
+  $("stats").textContent =
+    `${songs} ${songs === 1 ? "song" : "songs"}` +
+    (plays ? ` · ${plays} ${plays === 1 ? "play" : "plays"}` : "");
+  $("actions").hidden = false;
+
+  const btn = $("share");
+  btn.addEventListener("click", async () => {
+    const url = location.origin + "/p/" + slug;
+    const title = data.title + (data.creatorName ? " by " + data.creatorName : "");
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, url });
+        return;
+      } catch {
+        // Dismissed, or unavailable after all — fall through to the clipboard.
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      btn.textContent = "Link copied";
+      $("announce").textContent = "Link copied to clipboard";
+      setTimeout(() => { btn.textContent = "Share this playlist"; }, 1800);
+    } catch {
+      btn.textContent = url;
+    }
+  });
+}
+
 /* ------------------------------------------------------------------- boot */
 
 async function load() {
   try {
-    const res = await fetch("/api/playlists/" + encodeURIComponent(slug));
+    // count=1 is what makes this a play. The edit page and the dashboard read
+    // the same endpoint without it, so the number below means something.
+    const res = await fetch("/api/playlists/" + encodeURIComponent(slug) + "?count=1");
     if (!res.ok) return showError("There is no playlist at this link. It may have been mistyped.");
     data = await res.json();
   } catch {
@@ -206,6 +256,8 @@ async function load() {
   $("title").textContent = data.title;
   $("byline").textContent = data.creatorName ? "Assembled by " + data.creatorName : "";
   $("intro").textContent = data.intro || "";
+
+  setUpSharing();
 
   if (!data.tracks.length) {
     $("error").hidden = false;

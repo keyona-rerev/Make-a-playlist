@@ -199,15 +199,29 @@ async function loadPlaylist(slug) {
   return { playlist, tracks: tracks.rows };
 }
 
-function publicShape(playlist, tracks) {
+// The `req` argument is what the caller is holding — an edit key header, a
+// session, or neither. Folding it in here means the edit page learns what it
+// is allowed to do from the same read that fetches the playlist, instead of
+// probing with a write.
+function publicShape(playlist, tracks, req) {
+  const isOwner = req ? ownsIt(req, playlist) : false;
+  const hasKey = req ? holdsEditKey(req, playlist) : false;
+  const canEdit = isOwner || hasKey;
   return {
     slug: playlist.slug,
     title: playlist.title,
     intro: playlist.intro,
     creatorName: playlist.creator_name,
     theme: playlist.theme || "",
+    isPublic: playlist.is_public !== false,
     hasOwner: Boolean(playlist.owner_id),
     viewCount: playlist.view_count,
+    canEdit,
+    isOwner,
+    // Administrative actions belong to the owner once there is one. Until
+    // then the edit key is the only credential in existence, so it carries them.
+    canAdminister: playlist.owner_id ? isOwner : hasKey,
+    claimable: Boolean(!playlist.owner_id && hasKey),
     tracks: tracks.map((t) => ({
       id: t.id,
       position: t.position,
@@ -219,6 +233,11 @@ function publicShape(playlist, tracks) {
       commentary: t.commentary,
       contributorName: t.contributor_name,
       verified: Boolean(t.contributor_user_id),
+      canModify: canEdit && canModifyTrack(req, playlist, t),
+      mine: Boolean(
+        req && req.user && t.contributor_user_id &&
+          String(t.contributor_user_id) === String(req.user.id)
+      ),
     })),
   };
 }
@@ -265,9 +284,18 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// What comes back from the API depends on the edit key header and the session
+// cookie, neither of which the browser cache keys on. Without this a reply
+// built for one viewer gets replayed for another — a guest kept seeing the
+// owner's view, and a revoked link kept working until a hard reload.
+app.use("/api", (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
 /* ----------------------------------------------------------- authorization */
-// Two ways in, and the edit key never stops working. Links already sent out
-// have to keep functioning, so accounts are additive rather than a gate.
+// Two ways in. Accounts are additive rather than a gate, so a link already
+// sent out keeps working until its owner deliberately replaces it.
 
 const holdsEditKey = (req, playlist) =>
   tokenMatches(req.get("X-Edit-Key"), playlist.edit_token_hash);
@@ -283,6 +311,35 @@ async function requireEditKey(req, res) {
   }
   if (!holdsEditKey(req, found.playlist) && !ownsIt(req, found.playlist)) {
     res.status(403).json({ error: "You need the edit link for this playlist, or to be signed in as its owner." });
+    return null;
+  }
+  return found;
+}
+
+// Adding a song is open to anyone holding the edit link — that is the whole
+// point of handing it out. Changing or removing one that is already there is
+// not, once a playlist has an owner, or a single forwarded link would be
+// enough to quietly erase someone else's work.
+function canModifyTrack(req, playlist, track) {
+  if (!playlist.owner_id) return true;
+  if (ownsIt(req, playlist)) return true;
+  return Boolean(
+    req.user &&
+      track.contributor_user_id &&
+      String(track.contributor_user_id) === String(req.user.id)
+  );
+}
+
+// Renaming, hiding and deleting are the owner's, not every guest holding the
+// edit link. Ownerless playlists have nobody else to ask, so the key stands in.
+async function requireAdmin(req, res) {
+  const found = await requireEditKey(req, res);
+  if (!found) return null;
+  const p = found.playlist;
+  if (p.owner_id && !ownsIt(req, p)) {
+    res.status(403).json({
+      error: "Only the person who owns this playlist can change or delete it. You can still add songs.",
+    });
     return null;
   }
   return found;
@@ -394,6 +451,8 @@ app.get("/api/my/playlists", async (req, res) => {
   const { rows } = await pool.query(
     `SELECT p.*,
             (SELECT count(*) FROM playlist_tracks t WHERE t.playlist_id = p.id) AS track_count,
+            (SELECT youtube_id FROM playlist_tracks t
+              WHERE t.playlist_id = p.id ORDER BY t.position ASC, t.id ASC LIMIT 1) AS cover_youtube_id,
             (p.owner_id = $1) AS is_owner
        FROM playlists p
       WHERE p.owner_id = $1
@@ -410,6 +469,9 @@ app.get("/api/my/playlists", async (req, res) => {
       creatorName: p.creator_name,
       theme: p.theme || "",
       trackCount: Number(p.track_count),
+      viewCount: p.view_count,
+      isPublic: p.is_public !== false,
+      coverYoutubeId: p.cover_youtube_id || null,
       isOwner: p.is_owner,
       updatedAt: p.updated_at,
     })),
@@ -453,26 +515,52 @@ app.get("/api/oembed", async (req, res) => {
   }
 });
 
-// Browse-all: the homepage's discovery surface. Every playlist is public by
-// default (see is_public in the schema), so this simply lists the most
-// recently updated ones with enough to render a row: cover art comes from
-// the first track's YouTube thumbnail.
+// Browse-all: the discovery surface. Playlists are public by default but can
+// be unlisted, and one with no songs in it is not worth a row, so both are
+// filtered out here. Cover art comes from the first track's YouTube thumbnail.
+const BROWSE_SORTS = {
+  recent: "p.updated_at DESC",
+  new: "p.created_at DESC",
+  popular: "p.view_count DESC, p.updated_at DESC",
+  songs: "track_count DESC, p.updated_at DESC",
+  title: "lower(p.title) ASC",
+};
+
 app.get("/api/playlists", async (req, res) => {
-  const limit = Math.min(Math.max(Number(req.query.limit) || 60, 1), 100);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 24, 1), 100);
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
+  const order = BROWSE_SORTS[req.query.sort] || BROWSE_SORTS.recent;
+  const q = clean(req.query.q, 80);
+
+  // A playlist with no songs in it is not something anyone can listen to, and
+  // every playlist starts that way — so the feed would otherwise fill with
+  // empty rows the moment people start creating them.
+  const includeEmpty = req.query.includeEmpty === "1";
+
+  // One extra row is fetched purely to answer "is there another page", which
+  // avoids a second count query on every browse.
   const { rows } = await pool.query(
-    `SELECT p.*,
-            (SELECT count(*) FROM playlist_tracks t WHERE t.playlist_id = p.id) AS track_count,
-            (SELECT youtube_id FROM playlist_tracks t
-              WHERE t.playlist_id = p.id ORDER BY t.position ASC, t.id ASC LIMIT 1) AS cover_youtube_id
-       FROM playlists p
-      WHERE p.is_public = true
-      ORDER BY p.updated_at DESC
-      LIMIT $1`,
-    [limit]
+    `SELECT * FROM (
+       SELECT p.*,
+              (SELECT count(*) FROM playlist_tracks t WHERE t.playlist_id = p.id) AS track_count,
+              (SELECT youtube_id FROM playlist_tracks t
+                WHERE t.playlist_id = p.id ORDER BY t.position ASC, t.id ASC LIMIT 1) AS cover_youtube_id
+         FROM playlists p
+        WHERE p.is_public = true
+          AND ($3::text = '' OR p.title ILIKE '%' || $3::text || '%'
+                             OR p.creator_name ILIKE '%' || $3::text || '%')
+     ) p
+     WHERE ($4::boolean OR track_count > 0)
+     ORDER BY ${order}
+     LIMIT $1 OFFSET $2`,
+    [limit + 1, offset, q, includeEmpty]
   );
 
+  const page = rows.slice(0, limit);
+
   res.json({
-    playlists: rows.map((p) => ({
+    hasMore: rows.length > limit,
+    playlists: page.map((p) => ({
       slug: p.slug,
       title: p.title,
       creatorName: p.creator_name,
@@ -494,8 +582,8 @@ app.post("/api/playlists", rateLimit(5, 3600000), async (req, res) => {
   const editToken = randomId(32);
 
   const { rows } = await pool.query(
-    `INSERT INTO playlists (slug, edit_token_hash, title, intro, creator_name, theme, owner_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    `INSERT INTO playlists (slug, edit_token_hash, title, intro, creator_name, theme, owner_id, is_public)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
     [
       slug,
       hashToken(editToken),
@@ -504,6 +592,7 @@ app.post("/api/playlists", rateLimit(5, 3600000), async (req, res) => {
       clean(req.body.creatorName, MAX_SHORT),
       THEMES[req.body.theme] ? req.body.theme : "",
       req.user ? req.user.id : null,
+      req.body.isPublic === undefined ? true : Boolean(req.body.isPublic),
     ]
   );
 
@@ -513,28 +602,103 @@ app.post("/api/playlists", rateLimit(5, 3600000), async (req, res) => {
 app.get("/api/playlists/:slug", async (req, res) => {
   const found = await loadPlaylist(req.params.slug);
   if (!found) return res.status(404).json({ error: "No playlist with that link." });
-  pool
-    .query("UPDATE playlists SET view_count = view_count + 1 WHERE id = $1", [found.playlist.id])
-    .catch(() => {});
-  res.json(publicShape(found.playlist, found.tracks));
+
+  // Only an actual listen counts. The edit page and the dashboard read this
+  // same endpoint, and counting those made the number meaningless.
+  if (req.query.count === "1") {
+    pool
+      .query("UPDATE playlists SET view_count = view_count + 1 WHERE id = $1", [found.playlist.id])
+      .catch(() => {});
+  }
+  res.json(publicShape(found.playlist, found.tracks, req));
 });
 
 app.patch("/api/playlists/:slug", async (req, res) => {
-  const found = await requireEditKey(req, res);
+  const found = await requireAdmin(req, res);
   if (!found) return;
   const p = found.playlist;
   const { rows } = await pool.query(
-    `UPDATE playlists SET title = $1, intro = $2, creator_name = $3, theme = $4, updated_at = now()
-     WHERE id = $5 RETURNING *`,
+    `UPDATE playlists
+        SET title = $1, intro = $2, creator_name = $3, theme = $4, is_public = $5, updated_at = now()
+      WHERE id = $6 RETURNING *`,
     [
       req.body.title !== undefined ? clean(req.body.title, MAX_SHORT) || p.title : p.title,
       req.body.intro !== undefined ? clean(req.body.intro, MAX_COMMENTARY) : p.intro,
       req.body.creatorName !== undefined ? clean(req.body.creatorName, MAX_SHORT) : p.creator_name,
       req.body.theme !== undefined ? (THEMES[req.body.theme] ? req.body.theme : "") : p.theme,
+      req.body.isPublic !== undefined ? Boolean(req.body.isPublic) : p.is_public,
       p.id,
     ]
   );
-  res.json(publicShape(rows[0], found.tracks));
+  res.json(publicShape(rows[0], found.tracks, req));
+});
+
+// Losing the edit link used to be permanent, and a link once sent out could
+// never be taken back. Rotating replaces the token: the owner gets a fresh
+// link to hand out, and every copy of the old one stops working.
+app.post("/api/playlists/:slug/rotate-key", async (req, res) => {
+  const found = await requireAdmin(req, res);
+  if (!found) return;
+
+  const editToken = randomId(32);
+  await pool.query("UPDATE playlists SET edit_token_hash = $1 WHERE id = $2", [
+    hashToken(editToken),
+    found.playlist.id,
+  ]);
+  res.json({ editKey: editToken });
+});
+
+app.delete("/api/playlists/:slug", async (req, res) => {
+  const found = await requireAdmin(req, res);
+  if (!found) return;
+  // Tracks go with it via ON DELETE CASCADE.
+  await pool.query("DELETE FROM playlists WHERE id = $1", [found.playlist.id]);
+  res.status(204).end();
+});
+
+// Takes the full list of track ids in their new order. Sending the whole
+// order rather than one moved track keeps positions consistent when two
+// people are rearranging at once — last write wins on the entire sequence
+// instead of leaving a half-applied swap behind.
+app.put("/api/playlists/:slug/order", async (req, res, next) => {
+  // Sequencing is an editorial call, so it stays with whoever owns the playlist.
+  const found = await requireAdmin(req, res);
+  if (!found) return;
+
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.map(String) : null;
+  if (!ids) return res.status(400).json({ error: "Send the track ids in their new order." });
+
+  const known = found.tracks.map((t) => String(t.id));
+  const sameSet =
+    ids.length === known.length &&
+    new Set(ids).size === ids.length &&
+    ids.every((id) => known.includes(id));
+  if (!sameSet) {
+    return res.status(409).json({
+      error: "This playlist changed while you were rearranging it. Reload and try again.",
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (let i = 0; i < ids.length; i++) {
+      await client.query(
+        "UPDATE playlist_tracks SET position = $1 WHERE id = $2 AND playlist_id = $3",
+        [i + 1, ids[i], found.playlist.id]
+      );
+    }
+    await client.query("UPDATE playlists SET updated_at = now() WHERE id = $1", [found.playlist.id]);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    client.release();
+    return next(err);
+  }
+  client.release();
+
+  const fresh = await loadPlaylist(req.params.slug);
+  res.json(publicShape(fresh.playlist, fresh.tracks, req));
 });
 
 app.post("/api/playlists/:slug/tracks", async (req, res) => {
@@ -584,6 +748,11 @@ app.patch("/api/playlists/:slug/tracks/:id", async (req, res) => {
   if (!found) return;
   const track = found.tracks.find((t) => String(t.id) === req.params.id);
   if (!track) return res.status(404).json({ error: "That track is not in this playlist." });
+  if (!canModifyTrack(req, found.playlist, track)) {
+    return res.status(403).json({
+      error: "You can only change songs you added yourself. Ask whoever owns this playlist to edit that one.",
+    });
+  }
 
   const { rows } = await pool.query(
     `UPDATE playlist_tracks
@@ -599,16 +768,27 @@ app.patch("/api/playlists/:slug/tracks/:id", async (req, res) => {
       track.id,
     ]
   );
+  await pool.query("UPDATE playlists SET updated_at = now() WHERE id = $1", [found.playlist.id]);
   res.json(rows[0]);
 });
 
 app.delete("/api/playlists/:slug/tracks/:id", async (req, res) => {
   const found = await requireEditKey(req, res);
   if (!found) return;
+
+  const track = found.tracks.find((t) => String(t.id) === req.params.id);
+  if (!track) return res.status(404).json({ error: "That track is not in this playlist." });
+  if (!canModifyTrack(req, found.playlist, track)) {
+    return res.status(403).json({
+      error: "You can only remove songs you added yourself.",
+    });
+  }
+
   await pool.query("DELETE FROM playlist_tracks WHERE id = $1 AND playlist_id = $2", [
     req.params.id,
     found.playlist.id,
   ]);
+  await pool.query("UPDATE playlists SET updated_at = now() WHERE id = $1", [found.playlist.id]);
   res.status(204).end();
 });
 

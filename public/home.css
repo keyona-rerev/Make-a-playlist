@@ -29,6 +29,10 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
 
+/* Several things toggled with the hidden attribute also carry a display of
+   their own, which would otherwise win and leave them on screen. */
+[hidden] { display: none !important; }
+
 html, body { height: 100%; }
 
 body {
@@ -194,6 +198,45 @@ a { color: inherit; text-decoration: none; }
   padding: 0 8px;
   margin-top: auto;
 }
+
+/* --------------------------------------------------------------- account */
+
+.account-slot { padding: 0 8px; }
+
+.account-link {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-bottom: 1px solid var(--glass-border-color);
+  padding-bottom: 2px;
+}
+.account-link:hover { color: var(--text); }
+
+.account-chip { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.account-avatar { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; }
+.account-name {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.account-signout {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-dimmer);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.account-signout:hover { color: var(--text); }
 
 /* ------------------------------------------------------------------ main */
 
@@ -394,6 +437,41 @@ h1 {
 }
 
 /* --------------------------------------------------------------- browse */
+
+.browse-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.browse-controls input, .browse-controls select {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--r-sm);
+  padding: 12px 16px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.browse-controls input:focus, .browse-controls select:focus { border-color: var(--glass-border-color); }
+.browse-controls input::placeholder { color: rgba(255, 255, 255, 0.3); }
+.browse-controls input[type="search"] { flex: 1 1 240px; min-width: 0; }
+.browse-controls select { flex: 0 0 auto; cursor: pointer; }
+.browse-controls option { background: #1A1108; color: var(--text); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .browse-head {
   display: flex;

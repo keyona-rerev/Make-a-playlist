@@ -24,6 +24,10 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* Several things toggled with the hidden attribute also carry a display of
+   their own, which would otherwise win and leave them on screen. */
+[hidden] { display: none !important; }
+
 body {
   background: var(--ink);
   color: var(--paper);
@@ -76,6 +80,7 @@ a { color: var(--brass); }
 .masthead { border-bottom: 1px solid var(--ink-line); padding-bottom: 1.75rem; margin-bottom: 2rem; }
 .masthead .byline { font-family: var(--ui); font-size: 0.8125rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-top: 0.75rem; }
 .masthead .intro { margin-top: 1rem; max-width: 58ch; color: var(--paper-dim); font-style: italic; }
+.masthead-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; }
 
 /* ------------------------------------------------------------- play layout */
 
@@ -107,6 +112,32 @@ button[disabled] { opacity: 0.4; cursor: not-allowed; }
 .btn-primary { background: var(--brass); border-color: var(--brass); color: #14161f; font-weight: 600; }
 .btn-primary:hover { background: #dab63d; border-color: #dab63d; color: #14161f; }
 .btn-danger:hover { border-color: var(--rust); color: var(--rust); }
+
+/* Anchors that need to read as buttons. */
+.btn-ghost {
+  display: inline-block;
+  font-family: var(--ui);
+  font-size: 0.875rem;
+  color: var(--paper);
+  border: 1px solid var(--ink-line);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.9rem;
+  text-decoration: none;
+}
+.btn-ghost:hover { border-color: var(--brass); color: var(--brass); }
+
+/* Announced by screen readers, never shown. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* --------------------------------------------------------------- the note */
 
@@ -213,6 +244,27 @@ body.theme-birthday .btn-primary:hover { background: #ff9440; border-color: #ff9
 .topbar a { text-decoration: none; border-bottom: 1px solid transparent; padding-bottom: 2px; }
 .topbar a:hover { border-bottom-color: var(--brass); }
 .topbar .home { color: var(--muted); }
+.topbar .topbar-right { display: flex; align-items: baseline; gap: 1rem; }
+
+/* --------------------------------------------------------------- account */
+
+.account-link { color: var(--brass); text-decoration: none; }
+.account-chip { display: flex; align-items: center; gap: 0.5rem; text-transform: none; letter-spacing: 0; }
+.account-avatar { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; }
+.account-name { color: var(--paper-dim); font-size: 0.8125rem; }
+.account-signout {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: var(--ui);
+  font-size: 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.account-signout:hover { color: var(--brass); border: 0; }
 
 /* ---------------------------------------------------- your links */
 

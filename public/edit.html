@@ -12,20 +12,37 @@
   <div class="wrap wrap--narrow">
     <nav class="topbar">
       <a href="/" class="home">Make a playlist</a>
-      <a href="/mine">Your playlists</a>
+      <span class="topbar-right">
+        <a href="/mine">Your playlists</a>
+        <span data-account></span>
+      </span>
     </nav>
 
     <header class="masthead">
-      <p class="eyebrow">Edit mode</p>
+      <p class="eyebrow" id="eyebrow">Edit mode</p>
       <h1 id="title">Loading</h1>
       <p class="byline" id="byline"></p>
     </header>
 
     <div id="gate" hidden></div>
 
+    <!-- Every async action reports here as well as inline, so the outcome is
+         announced rather than only appearing somewhere on screen. -->
+    <p class="sr-only" id="announce" role="status" aria-live="polite"></p>
+
     <main id="main" hidden>
+
+      <div id="roleBanner" class="notice" style="margin-bottom:2rem"></div>
+
+      <section id="claimPanel" class="panel" style="margin-bottom:2.5rem" hidden>
+        <h2 style="margin-bottom:0.75rem">Make this yours</h2>
+        <p id="claimText" style="color:var(--paper-dim); margin-bottom:1.25rem"></p>
+        <button id="claimBtn" type="button" class="btn-primary" hidden>Save to my account</button>
+        <a id="claimSignIn" class="btn-ghost" href="#" hidden>Sign in with Google</a>
+      </section>
+
       <section class="links-panel" style="margin-bottom:2.5rem">
-        <h2 style="margin-bottom:1.25rem">Your two links</h2>
+        <h2 style="margin-bottom:1.25rem" id="linksHeading">Your two links</h2>
 
         <div class="field">
           <label for="shareLink">Send this one — anyone can listen</label>
@@ -35,13 +52,21 @@
           </div>
         </div>
 
-        <div class="field" style="margin-bottom:0">
-          <label for="editLink">Keep this one — anyone with it can add songs</label>
-          <div class="copyrow">
+        <div class="field" style="margin-bottom:0" id="editLinkField">
+          <label for="editLink" id="editLinkLabel">Keep this one — anyone with it can add songs</label>
+          <div class="copyrow" id="editLinkRow">
             <input id="editLink" readonly>
             <button type="button" data-copy="editLink">Copy</button>
           </div>
-          <p class="hint">This page. Bookmark it, or find it again under Your playlists.</p>
+          <p class="hint" id="editLinkHint"></p>
+          <p class="hint" id="keepSafe" hidden style="margin-top:0.75rem">
+            <a id="mailLinks" href="#">Email these to myself</a> ·
+            <a id="downloadLinks" href="#">Save them as a file</a>
+          </p>
+          <p id="rotateWrap" hidden style="margin-top:1rem">
+            <button id="rotateKey" type="button">Make a new edit link</button>
+            <span class="meta" id="rotateStatus" style="margin-left:0.75rem"></span>
+          </p>
         </div>
       </section>
 
@@ -80,10 +105,10 @@
               placeholder="Optional. Context for anyone who does not know them."></textarea>
           </div>
 
-          <div class="field">
+          <div class="field" id="contributorField">
             <label for="tContributor">Your name</label>
             <input id="tContributor" maxlength="200" autocomplete="off">
-            <p class="hint">Shown as "added by" on the track.</p>
+            <p class="hint" id="contributorHint">Shown as "added by" on the track.</p>
           </div>
 
           <div id="addError" hidden></div>
@@ -91,21 +116,68 @@
         </div>
       </section>
 
-      <section class="panel" style="margin-top:2.5rem">
-        <h2 style="margin-bottom:1.5rem">The look</h2>
-        <div class="field" style="margin-bottom:0">
-          <label for="theme">Design</label>
+      <section class="panel" style="margin-top:2.5rem" id="settingsPanel" hidden>
+        <h2 style="margin-bottom:1.5rem">Playlist settings</h2>
+
+        <div class="field">
+          <label for="sTitle">Title</label>
+          <input id="sTitle" maxlength="200" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <label for="sCreator">Assembled by</label>
+          <input id="sCreator" maxlength="200" autocomplete="off">
+        </div>
+
+        <div class="field">
+          <label for="sIntro">Opening note <span class="count" id="sIntroCount">0 / 2000</span></label>
+          <textarea id="sIntro" maxlength="2000"
+            placeholder="What is this playlist, and who is it for?"></textarea>
+          <p class="hint">What people read before the first song.</p>
+        </div>
+
+        <div class="field">
+          <label for="theme">Look</label>
           <select id="theme">
             <option value="">Liner notes</option>
             <option value="birthday">Painted scene</option>
           </select>
-          <p class="hint" id="themeStatus">Changes apply the moment you pick one.</p>
         </div>
+
+        <div class="field">
+          <label for="visibility">Who can find it</label>
+          <select id="visibility">
+            <option value="public">Anyone — list it in Browse all</option>
+            <option value="unlisted">Only people I send the link to</option>
+          </select>
+          <p class="hint" id="visibilityHint"></p>
+        </div>
+
+        <div id="settingsError" hidden></div>
+        <button id="saveSettings" type="button" class="btn-primary">Save changes</button>
+        <span class="meta" id="settingsStatus" style="margin-left:0.75rem"></span>
       </section>
 
       <section style="margin-top:2.5rem">
-        <h2 style="margin-bottom:1rem">In the playlist</h2>
+        <div style="display:flex; align-items:baseline; justify-content:space-between; gap:1rem">
+          <h2 style="margin-bottom:1rem">In the playlist</h2>
+          <span class="meta" id="listCount"></span>
+        </div>
         <div id="list"></div>
+      </section>
+
+      <section class="panel" style="margin-top:2.5rem; border-color:var(--rust)" id="dangerPanel" hidden>
+        <h2 style="margin-bottom:0.75rem">Delete this playlist</h2>
+        <p style="color:var(--paper-dim); margin-bottom:1.25rem">
+          This removes the playlist and every song in it, for everyone. Links already
+          sent out will stop working. It cannot be undone.
+        </p>
+        <div class="field">
+          <label for="confirmTitle">Type the playlist's title to confirm</label>
+          <input id="confirmTitle" autocomplete="off">
+        </div>
+        <div id="deleteError" hidden></div>
+        <button id="deleteBtn" type="button" class="btn-danger">Delete permanently</button>
       </section>
 
       <p class="meta" style="margin-top:2.5rem">
@@ -114,24 +186,53 @@
     </main>
   </div>
 
+<script src="/account.js"></script>
 <script>
 const slug = location.pathname.split("/").filter(Boolean)[1];
-const key = location.hash.slice(1);
-let data = null;
+const STORE = "map.playlists";
 
 const $ = (id) => document.getElementById(id);
-const STORE = "map.playlists";
+
+let data = null;
+let account = { user: null, signInAvailable: false };
+let editing = null;   // id of the track whose inline editor is open
+
+/* -------------------------------------------------------------- remembered */
 
 function saved() {
   try { return JSON.parse(localStorage.getItem(STORE) || "[]"); }
   catch { return []; }
 }
 
-function remember(slug, key, title) {
-  const list = saved().filter((p) => p.slug !== slug);
-  list.unshift({ slug, key, title, savedAt: Date.now() });
-  try { localStorage.setItem(STORE, JSON.stringify(list)); } catch {}
+function savedKeyFor(s) {
+  const hit = saved().find((p) => p.slug === s);
+  return hit ? hit.key : "";
 }
+
+// The role is set the first time a playlist is saved and kept afterwards, so
+// "I made this" stays distinguishable from "someone sent me the link".
+function remember(s, k, title) {
+  const list = saved();
+  const prior = list.find((p) => p.slug === s);
+  const rest = list.filter((p) => p.slug !== s);
+  rest.unshift({
+    slug: s,
+    key: k,
+    title,
+    role: prior ? prior.role : "guest",
+    savedAt: Date.now(),
+  });
+  try { localStorage.setItem(STORE, JSON.stringify(rest)); } catch {}
+}
+
+function forget(s) {
+  try { localStorage.setItem(STORE, JSON.stringify(saved().filter((p) => p.slug !== s))); }
+  catch {}
+}
+
+// A fragment does not survive the sign-in round trip, and people bookmark the
+// bare path. Either way the key is already on this device from the first visit.
+let key = location.hash.slice(1) || savedKeyFor(slug);
 
 const api = (path, options = {}) =>
   fetch(path, {
@@ -139,18 +240,10 @@ const api = (path, options = {}) =>
     headers: { "Content-Type": "application/json", "X-Edit-Key": key, ...(options.headers || {}) },
   });
 
-// The edit page borrows the playlist's palette so switching the look is
-// visible from here, not just on the share link.
-function applyTheme(theme) {
-  document.body.classList.toggle("theme-birthday", theme === "birthday");
-}
+/* ------------------------------------------------------------------ status */
 
-function blocked(message) {
-  const box = $("gate");
-  box.hidden = false;
-  box.className = "notice notice--error";
-  box.textContent = message;
-  $("title").textContent = "Cannot edit";
+function announce(message) {
+  $("announce").textContent = message;
 }
 
 function setError(id, message) {
@@ -160,6 +253,21 @@ function setError(id, message) {
   box.className = "notice notice--error";
   box.style.marginBottom = "1.25rem";
   box.textContent = message;
+  announce(message);
+}
+
+function blocked(message) {
+  const box = $("gate");
+  box.hidden = false;
+  box.className = "notice notice--error";
+  box.textContent = message;
+  $("title").textContent = "Cannot edit";
+  $("eyebrow").textContent = "No access";
+  announce(message);
+}
+
+function applyTheme(theme) {
+  document.body.classList.toggle("theme-birthday", theme === "birthday");
 }
 
 /* ------------------------------------------------------- youtube parsing */
@@ -206,6 +314,7 @@ $("url").addEventListener("input", async () => {
         $("tArtist").value = (info.author || "").replace(/\s*-\s*Topic$/, "").slice(0, 200);
       }
       hint.textContent = "Found it. Edit anything below that looks wrong.";
+      announce("Found " + ($("tTitle").value || "the video"));
     } else {
       hint.textContent = "Could not find that video, but you can still type it in by hand.";
     }
@@ -214,19 +323,193 @@ $("url").addEventListener("input", async () => {
   }
 });
 
-const commentary = $("tCommentary");
-commentary.addEventListener("input", () => {
-  const n = commentary.value.length;
-  const el = $("cCount");
-  el.textContent = n + " / 2000";
-  el.classList.toggle("over", n >= 2000);
-});
+function wireCounter(inputId, countId, max) {
+  const field = $(inputId);
+  field.addEventListener("input", () => {
+    const n = field.value.length;
+    const el = $(countId);
+    el.textContent = n + " / " + max;
+    el.classList.toggle("over", n >= max);
+  });
+}
+wireCounter("tCommentary", "cCount", 2000);
+wireCounter("sIntro", "sIntroCount", 2000);
 
-/* ---------------------------------------------------------------- render */
+/* ------------------------------------------------------------ track editor */
+
+function field(labelText, value, opts = {}) {
+  const wrap = document.createElement("div");
+  wrap.className = "field";
+
+  const label = document.createElement("label");
+  label.textContent = labelText;
+
+  const input = document.createElement(opts.multiline ? "textarea" : "input");
+  input.value = value || "";
+  input.maxLength = opts.max || 200;
+  if (opts.multiline) input.style.minHeight = opts.tall ? "6rem" : "4rem";
+
+  const id = "f" + Math.random().toString(36).slice(2, 9);
+  input.id = id;
+  label.htmlFor = id;
+
+  wrap.append(label, input);
+  wrap.input = input;
+  return wrap;
+}
+
+function trackEditor(track) {
+  const form = document.createElement("div");
+  form.style.marginTop = "1rem";
+
+  const title = field("Song title", track.title);
+  const artist = field("Artist", track.artist);
+  const commentary = field("Why this song", track.commentary, { multiline: true, max: 2000, tall: true });
+  const context = field("About the artist", track.artistContext, { multiline: true, max: 2000 });
+
+  const error = document.createElement("div");
+  error.hidden = true;
+
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "btn-primary";
+  save.textContent = "Save changes";
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.style.marginLeft = "0.5rem";
+  cancel.addEventListener("click", () => { editing = null; renderList(); });
+
+  save.addEventListener("click", async () => {
+    if (!title.input.value.trim()) {
+      error.hidden = false;
+      error.className = "notice notice--error";
+      error.style.marginBottom = "1rem";
+      error.textContent = "The song needs a title.";
+      return;
+    }
+    save.disabled = true;
+    save.textContent = "Saving";
+    try {
+      const res = await api("/api/playlists/" + slug + "/tracks/" + track.id, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: title.input.value.trim(),
+          artist: artist.input.value.trim(),
+          artistName: artist.input.value.trim(),
+          artistContext: context.input.value.trim(),
+          commentary: commentary.input.value.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        error.hidden = false;
+        error.className = "notice notice--error";
+        error.style.marginBottom = "1rem";
+        error.textContent = body.error || "Could not save that.";
+        save.disabled = false;
+        save.textContent = "Save changes";
+        return;
+      }
+      editing = null;
+      announce("Saved " + title.input.value.trim());
+      await refresh();
+    } catch {
+      error.hidden = false;
+      error.className = "notice notice--error";
+      error.textContent = "Could not reach the server.";
+      save.disabled = false;
+      save.textContent = "Save changes";
+    }
+  });
+
+  form.append(title, artist, commentary, context, error, save, cancel);
+  return form;
+}
+
+/* ------------------------------------------------------------------ render */
+
+function moveButton(label, from, to) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = label;
+  btn.addEventListener("click", async () => {
+    const ids = data.tracks.map((t) => String(t.id));
+    const [moved] = ids.splice(from, 1);
+    ids.splice(to, 0, moved);
+    btn.disabled = true;
+    try {
+      const res = await api("/api/playlists/" + slug + "/order", {
+        method: "PUT",
+        body: JSON.stringify({ ids }),
+      });
+      if (res.ok) {
+        data = await res.json();
+        announce("Moved to position " + (to + 1));
+        renderList();
+        return;
+      }
+      const body = await res.json().catch(() => ({}));
+      announce(body.error || "Could not reorder.");
+      btn.disabled = false;
+    } catch {
+      announce("Could not reach the server.");
+      btn.disabled = false;
+    }
+  });
+  return btn;
+}
+
+function removeButton(track) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn-danger";
+  btn.textContent = "Remove";
+
+  // Two deliberate clicks rather than one, because a mis-click here used to
+  // delete somebody else's writing with no way back.
+  let armed = false;
+  let timer;
+
+  btn.addEventListener("click", async () => {
+    if (!armed) {
+      armed = true;
+      btn.textContent = "Tap again to remove";
+      announce("Tap again to remove " + track.title);
+      timer = setTimeout(() => {
+        armed = false;
+        btn.textContent = "Remove";
+      }, 4000);
+      return;
+    }
+
+    clearTimeout(timer);
+    btn.disabled = true;
+    btn.textContent = "Removing";
+    const res = await api("/api/playlists/" + slug + "/tracks/" + track.id, { method: "DELETE" });
+    if (res.ok) {
+      announce("Removed " + track.title);
+      await refresh();
+    } else {
+      const body = await res.json().catch(() => ({}));
+      announce(body.error || "Could not remove that song.");
+      btn.disabled = false;
+      btn.textContent = "Remove";
+      armed = false;
+    }
+  });
+
+  return btn;
+}
 
 function renderList() {
   const list = $("list");
   list.replaceChildren();
+
+  $("listCount").textContent = data.tracks.length
+    ? data.tracks.length + (data.tracks.length === 1 ? " song" : " songs")
+    : "";
 
   if (!data.tracks.length) {
     const empty = document.createElement("div");
@@ -240,10 +523,12 @@ function renderList() {
     const row = document.createElement("div");
     row.className = "panel";
     row.style.marginBottom = "0.75rem";
-    row.style.display = "flex";
-    row.style.gap = "1rem";
-    row.style.alignItems = "flex-start";
     row.style.padding = "1rem 1.25rem";
+
+    const head = document.createElement("div");
+    head.style.display = "flex";
+    head.style.gap = "1rem";
+    head.style.alignItems = "flex-start";
 
     const num = document.createElement("span");
     num.className = "track-mark";
@@ -259,9 +544,15 @@ function renderList() {
 
     const who = document.createElement("p");
     who.className = "meta";
-    who.textContent = [t.artist, t.contributorName ? "added by " + t.contributorName : ""]
-      .filter(Boolean)
-      .join(" \u00b7 ");
+    const credit = t.contributorName ? "added by " + t.contributorName : "";
+    who.textContent = [t.artist, credit].filter(Boolean).join(" · ");
+    if (t.verified) {
+      const badge = document.createElement("span");
+      badge.textContent = " ✓ signed in";
+      badge.title = "This name came from a signed-in account, not typed by hand";
+      badge.style.color = "var(--brass)";
+      who.appendChild(badge);
+    }
 
     body.append(name, who);
 
@@ -274,20 +565,50 @@ function renderList() {
       body.appendChild(note);
     }
 
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "btn-danger";
-    remove.textContent = "Remove";
-    remove.addEventListener("click", async () => {
-      remove.disabled = true;
-      const res = await api("/api/playlists/" + slug + "/tracks/" + t.id, { method: "DELETE" });
-      if (res.ok) { await load(); } else { remove.disabled = false; }
-    });
+    head.append(num, body);
+    row.appendChild(head);
 
-    row.append(num, body, remove);
+    const actions = document.createElement("div");
+    actions.style.display = "flex";
+    actions.style.flexWrap = "wrap";
+    actions.style.gap = "0.5rem";
+    actions.style.marginTop = "0.9rem";
+
+    if (data.canAdminister && data.tracks.length > 1) {
+      const up = moveButton("↑ Up", i, i - 1);
+      up.disabled = i === 0;
+      const down = moveButton("↓ Down", i, i + 1);
+      down.disabled = i === data.tracks.length - 1;
+      actions.append(up, down);
+    }
+
+    if (t.canModify) {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = editing === t.id ? "Close editor" : "Edit";
+      edit.addEventListener("click", () => {
+        editing = editing === t.id ? null : t.id;
+        renderList();
+      });
+      actions.append(edit, removeButton(t));
+    } else {
+      const locked = document.createElement("span");
+      locked.className = "meta";
+      locked.style.alignSelf = "center";
+      locked.textContent = account.user
+        ? "Only the owner can change this one"
+        : "Sign in to manage the songs you add";
+      actions.appendChild(locked);
+    }
+
+    if (actions.childNodes.length) row.appendChild(actions);
+    if (editing === t.id) row.appendChild(trackEditor(t));
+
     list.appendChild(row);
   });
 }
+
+/* ---------------------------------------------------------------- add song */
 
 $("add").addEventListener("click", async () => {
   setError("addError", "");
@@ -308,7 +629,7 @@ $("add").addEventListener("click", async () => {
         artist: $("tArtist").value.trim(),
         artistName: $("tArtist").value.trim(),
         artistContext: $("tContext").value.trim(),
-        commentary: commentary.value.trim(),
+        commentary: $("tCommentary").value.trim(),
         contributorName: $("tContributor").value.trim(),
       }),
     });
@@ -317,13 +638,17 @@ $("add").addEventListener("click", async () => {
       setError("addError", body.error || "Could not add that song.");
     } else {
       const keepName = $("tContributor").value;
+      // Remembered per device so a returning contributor is not asked to
+      // introduce themselves again every single visit.
+      try { localStorage.setItem("map.name", keepName); } catch {}
       ["url", "tTitle", "tArtist", "tCommentary", "tContext"].forEach((id) => { $(id).value = ""; });
       $("tContributor").value = keepName;
       $("cCount").textContent = "0 / 2000";
       currentVideoId = null;
       $("details").hidden = true;
       $("urlHint").textContent = "Added. Paste the next one.";
-      await load();
+      announce("Added " + title);
+      await refresh();
     }
   } catch {
     setError("addError", "Could not reach the server. Try again.");
@@ -333,49 +658,331 @@ $("add").addEventListener("click", async () => {
   btn.textContent = "Add to the playlist";
 });
 
-/* ------------------------------------------------------------------ boot */
+/* ---------------------------------------------------------------- settings */
 
-async function load() {
-  const res = await fetch("/api/playlists/" + encodeURIComponent(slug));
-  if (!res.ok) { blocked("There is no playlist at this link."); return; }
-  data = await res.json();
+const VISIBILITY_HINTS = {
+  public: "Listed in Browse all, where anyone can find it.",
+  unlisted: "Kept out of Browse all. Anyone with the share link can still open it.",
+};
+
+$("visibility").addEventListener("change", () => {
+  $("visibilityHint").textContent = VISIBILITY_HINTS[$("visibility").value];
+});
+
+$("saveSettings").addEventListener("click", async () => {
+  setError("settingsError", "");
+  const btn = $("saveSettings");
+  btn.disabled = true;
+  $("settingsStatus").textContent = "Saving";
+
+  try {
+    const res = await api("/api/playlists/" + slug, {
+      method: "PATCH",
+      body: JSON.stringify({
+        title: $("sTitle").value.trim(),
+        creatorName: $("sCreator").value.trim(),
+        intro: $("sIntro").value.trim(),
+        theme: $("theme").value,
+        isPublic: $("visibility").value === "public",
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError("settingsError", body.error || "Could not save that.");
+      $("settingsStatus").textContent = "";
+    } else {
+      data = await res.json();
+      applyTheme(data.theme);
+      paint();
+      $("settingsStatus").textContent = "Saved.";
+      announce("Playlist settings saved");
+      setTimeout(() => { $("settingsStatus").textContent = ""; }, 3000);
+    }
+  } catch {
+    setError("settingsError", "Could not reach the server. Try again.");
+    $("settingsStatus").textContent = "";
+  }
+  btn.disabled = false;
+});
+
+/* ------------------------------------------------------------------ delete */
+
+$("deleteBtn").addEventListener("click", async () => {
+  setError("deleteError", "");
+  if ($("confirmTitle").value.trim() !== data.title) {
+    return setError("deleteError", "That does not match the title. Nothing was deleted.");
+  }
+
+  const btn = $("deleteBtn");
+  btn.disabled = true;
+  btn.textContent = "Deleting";
+
+  try {
+    const res = await api("/api/playlists/" + slug, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError("deleteError", body.error || "Could not delete it.");
+      btn.disabled = false;
+      btn.textContent = "Delete permanently";
+      return;
+    }
+    forget(slug);
+    location.href = "/mine";
+  } catch {
+    setError("deleteError", "Could not reach the server. Try again.");
+    btn.disabled = false;
+    btn.textContent = "Delete permanently";
+  }
+});
+
+/* -------------------------------------------------------------- rotate key */
+
+let rotateArmed = false;
+
+$("rotateKey").addEventListener("click", async () => {
+  const btn = $("rotateKey");
+  const status = $("rotateStatus");
+
+  if (!rotateArmed) {
+    rotateArmed = true;
+    btn.textContent = "Tap again to confirm";
+    status.textContent = "Every copy of the current edit link stops working.";
+    setTimeout(() => {
+      rotateArmed = false;
+      btn.textContent = key ? "Replace the edit link" : "Make a new edit link";
+      status.textContent = "";
+    }, 5000);
+    return;
+  }
+
+  rotateArmed = false;
+  btn.disabled = true;
+  btn.textContent = "Working";
+
+  try {
+    const res = await api("/api/playlists/" + slug + "/rotate-key", { method: "POST" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      status.textContent = body.error || "Could not make a new link.";
+    } else {
+      const body = await res.json();
+      key = body.editKey;
+      // Put it back in the address bar so a bookmark or reload still works.
+      history.replaceState(null, "", "/e/" + slug + "#" + key);
+      remember(slug, key, data.title);
+      status.textContent = "Done. The old link no longer works.";
+      announce("New edit link created. The old one no longer works.");
+      await refresh();
+    }
+  } catch {
+    status.textContent = "Could not reach the server.";
+  }
+
+  btn.disabled = false;
+  btn.textContent = key ? "Replace the edit link" : "Make a new edit link";
+});
+
+/* ------------------------------------------------------------------- claim */
+
+$("claimBtn").addEventListener("click", async () => {
+  const btn = $("claimBtn");
+  btn.disabled = true;
+  btn.textContent = "Saving";
+  try {
+    const res = await api("/api/playlists/" + slug + "/claim", { method: "POST" });
+    if (res.ok) {
+      announce("This playlist is now saved to your account");
+      await refresh();
+      return;
+    }
+    const body = await res.json().catch(() => ({}));
+    announce(body.error || "Could not save it.");
+  } catch {
+    announce("Could not reach the server.");
+  }
+  btn.disabled = false;
+  btn.textContent = "Save to my account";
+});
+
+/* ------------------------------------------------------------------- paint */
+
+function paint() {
+  const share = location.origin + "/p/" + slug;
+  const edit = location.origin + "/e/" + slug + "#" + key;
 
   $("title").textContent = data.title;
   $("byline").textContent = data.creatorName ? "Assembled by " + data.creatorName : "";
   $("viewLink").href = "/p/" + slug;
-  $("theme").value = data.theme || "";
-  applyTheme(data.theme);
+  $("shareLink").value = share;
+  $("editLink").value = edit;
 
-  $("shareLink").value = location.origin + "/p/" + slug;
-  $("editLink").value = location.origin + "/e/" + slug + "#" + key;
+  const owner = data.canAdminister;
+  $("eyebrow").textContent = owner ? "Managing" : "Invited to add";
+
+  // The two roles want different things from this page, so it says different
+  // things. A guest is here to add a song, not to be handed somebody else's
+  // credential and told to look after it.
+  if (owner) {
+    $("roleBanner").innerHTML =
+      "<strong>This playlist is yours.</strong> Add songs, rearrange them, change how it " +
+      "looks, and send the edit link to anyone you want contributing.";
+    $("linksHeading").textContent = "Your two links";
+    $("editLinkLabel").textContent = "Keep this one — anyone with it can add songs";
+
+    // Only a hash of the key is stored, so an owner who arrived through their
+    // account genuinely cannot be shown the existing link — but they can mint
+    // a replacement, which is what they actually need in order to invite anyone.
+    $("editLinkRow").hidden = !key;
+    $("editLinkHint").textContent = !key
+      ? "This device does not have the edit link, and it cannot be looked up — only a " +
+        "hash of it is stored. Make a new one below to invite contributors."
+      : data.hasOwner
+        ? "Send it to contributors. You do not need it yourself — your account gets you back in."
+        : "Send it to contributors, and keep your own copy: it is the only way back into this playlist.";
+    $("keepSafe").hidden = !key || Boolean(data.hasOwner);
+    $("rotateWrap").hidden = false;
+    $("rotateKey").textContent = key ? "Replace the edit link" : "Make a new edit link";
+  } else {
+    $("roleBanner").innerHTML =
+      "<strong>You were invited to add to this playlist.</strong> " +
+      "Songs you add show up under your name. The playlist itself — its title, its " +
+      "order, the songs other people added — belongs to whoever made it.";
+    $("linksHeading").textContent = "Links for this playlist";
+    $("editLinkLabel").textContent = "The link you were given — treat it as private";
+    $("editLinkRow").hidden = false;
+    $("editLinkHint").textContent =
+      "Anyone with this can add songs. It is not yours to hand on; send the share link above instead.";
+    $("keepSafe").hidden = true;
+    $("rotateWrap").hidden = true;
+  }
+
+  const body = [
+    data.title,
+    "",
+    "Share link (anyone can listen):",
+    share,
+    "",
+    "Edit link (anyone with it can add songs — keep this private):",
+    edit,
+    "",
+  ].join("\n");
+
+  $("mailLinks").href =
+    "mailto:?subject=" + encodeURIComponent("Playlist links: " + data.title) +
+    "&body=" + encodeURIComponent(body);
+
+  $("downloadLinks").onclick = (e) => {
+    e.preventDefault();
+    const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = data.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase() + "-links.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Settings and deletion are the owner's; a guest sees neither.
+  $("settingsPanel").hidden = !owner;
+  $("dangerPanel").hidden = !owner;
+  if (owner) {
+    $("sTitle").value = data.title;
+    $("sCreator").value = data.creatorName;
+    $("sIntro").value = data.intro;
+    $("sIntroCount").textContent = (data.intro || "").length + " / 2000";
+    $("theme").value = data.theme || "";
+    $("visibility").value = data.isPublic ? "public" : "unlisted";
+    $("visibilityHint").textContent = VISIBILITY_HINTS[data.isPublic ? "public" : "unlisted"];
+    $("confirmTitle").placeholder = data.title;
+  }
+
+  // Claiming turns a playlist nobody owns into one that survives losing the
+  // link. It is offered once, to whoever holds the key and is signed in.
+  const panel = $("claimPanel");
+  if (data.claimable) {
+    panel.hidden = false;
+    if (account.user) {
+      $("claimText").textContent =
+        "Nobody owns this playlist yet, so the edit link is the only way into it. " +
+        "Save it to your account and you can always get back in, even if the link is lost.";
+      $("claimBtn").hidden = false;
+      $("claimSignIn").hidden = true;
+    } else if (account.signInAvailable) {
+      $("claimText").textContent =
+        "Nobody owns this playlist yet, so the edit link is the only way into it. " +
+        "Sign in and you can attach it to your account, so losing the link stops mattering.";
+      $("claimBtn").hidden = true;
+      $("claimSignIn").hidden = false;
+      $("claimSignIn").href = "/auth/google?next=" + encodeURIComponent("/e/" + slug);
+    } else {
+      panel.hidden = true;
+    }
+  } else {
+    panel.hidden = true;
+  }
+
+  const contributorInput = $("tContributor");
+  if (account.user) {
+    contributorInput.value = account.user.name || "";
+    contributorInput.disabled = true;
+    $("contributorHint").textContent =
+      "Taken from your account, so it shows as verified rather than typed.";
+  } else {
+    contributorInput.disabled = false;
+    if (!contributorInput.value) {
+      try { contributorInput.value = localStorage.getItem("map.name") || ""; } catch {}
+    }
+    $("contributorHint").textContent = account.signInAvailable
+      ? "Shown as “added by”. Sign in instead and it is verified, and you can edit your songs later."
+      : "Shown as “added by” on the track.";
+  }
 
   renderList();
 }
 
-async function boot() {
-  if (!key) {
-    return blocked(
-      "This link is missing its edit key. The full link ends in a # followed by a long code. " +
-      "Ask whoever sent it to you for the complete link."
-    );
+/* -------------------------------------------------------------------- boot */
+
+async function load() {
+  const res = await api("/api/playlists/" + encodeURIComponent(slug));
+  if (!res.ok) {
+    blocked("There is no playlist at this link.");
+    return false;
   }
+  data = await res.json();
+  applyTheme(data.theme);
+  return true;
+}
 
-  await load();
-  if (!data) return;
+// Re-read and redraw. Used after anything that changes the playlist, so the
+// list, the counts and the permissions all come from one source of truth.
+async function refresh() {
+  if (await load()) paint();
+}
 
-  // Confirm the key works before showing the form, so a bad key fails here
-  // rather than after someone has written three paragraphs of commentary.
-  const check = await api("/api/playlists/" + slug, {
-    method: "PATCH",
-    body: JSON.stringify({}),
-  });
-  if (check.status === 403) {
+async function boot() {
+  account = await window.accountReady;
+
+  if (!(await load())) return;
+
+  // Access now comes back with the playlist itself. The old check fired a
+  // write to test the key, which quietly bumped the playlist to the top of
+  // Browse all every time somebody merely opened this page.
+  if (!data.canEdit) {
+    if (!key) {
+      return blocked(
+        account.user
+          ? "This playlist is not yours, and this link is missing its edit key. The full " +
+            "link ends in a # followed by a long code — ask whoever sent it for the complete link."
+          : "This link is missing its edit key. The full link ends in a # followed by a long " +
+            "code. Ask whoever sent it to you for the complete link, or sign in if the playlist is yours."
+      );
+    }
     return blocked("That edit key is not valid for this playlist. Check that you copied the whole link.");
   }
 
   $("gate").hidden = true;
   $("main").hidden = false;
-  remember(slug, key, data.title);
+
+  if (key) remember(slug, key, data.title);
 
   document.querySelectorAll("[data-copy]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -384,6 +991,7 @@ async function boot() {
       try {
         await navigator.clipboard.writeText(input.value);
         btn.textContent = "Copied";
+        announce("Copied to clipboard");
         setTimeout(() => { btn.textContent = "Copy"; }, 1600);
       } catch {
         btn.textContent = "Press Ctrl+C";
@@ -391,28 +999,7 @@ async function boot() {
     });
   });
 
-  $("theme").addEventListener("change", async () => {
-    const status = $("themeStatus");
-    const chosen = $("theme").value;
-    status.textContent = "Saving";
-    try {
-      const res = await api("/api/playlists/" + slug, {
-        method: "PATCH",
-        body: JSON.stringify({ theme: chosen }),
-      });
-      if (!res.ok) {
-        status.textContent = "Could not save that. Try again.";
-        return;
-      }
-      const updated = await res.json();
-      data.theme = updated.theme;
-      $("theme").value = updated.theme || "";
-      applyTheme(updated.theme);
-      status.textContent = "Saved. This page changed colour too, so you can see it.";
-    } catch {
-      status.textContent = "Could not reach the server. Try again.";
-    }
-  });
+  paint();
 }
 
 boot();

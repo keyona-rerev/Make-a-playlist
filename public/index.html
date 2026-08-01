@@ -43,6 +43,7 @@
       </div>
 
       <p class="sidebar-note">No account needed to listen, or to start one. Sign in only if you want your playlists to follow you around.</p>
+      <div class="account-slot" data-account></div>
     </aside>
 
     <main class="main">
@@ -91,15 +92,25 @@
             <p class="hint" id="themeHint">Dark and typographic, built for reading long notes.</p>
           </div>
 
+          <div class="field">
+            <label for="visibility">Who can find it</label>
+            <select id="visibility">
+              <option value="public">Anyone — list it in Browse all</option>
+              <option value="unlisted">Only people I send the link to</option>
+            </select>
+            <p class="hint" id="visibilityHint">Listed publicly. You can change this later.</p>
+          </div>
+
+          <p class="hint" id="ownerNote" style="margin-bottom:14px"></p>
           <div id="formError" hidden></div>
           <button id="create" type="button" class="btn-primary">Create the playlist</button>
-          <p class="hint" style="margin-top:14px">It will show up in Browse all the moment it exists — that is the default, for everyone.</p>
+          <a id="signInFirst" class="btn-ghost" href="/auth/google" hidden
+             style="display:inline-block;margin-left:10px">Sign in first</a>
         </div>
 
         <div id="done" hidden>
-          <div class="notice">
-            <strong>Your playlist exists.</strong> Two links below. They do different things,
-            and the second one is the only copy you get.
+          <div class="notice" id="doneNotice">
+            <strong>Your playlist exists.</strong> Two links below. They do different things.
           </div>
 
           <div class="field" style="margin-top:24px">
@@ -117,14 +128,15 @@
               <input id="editLink" readonly>
               <button type="button" data-copy="editLink">Copy</button>
             </div>
-            <p class="hint">
-              Saved to this browser under Your playlists, but keep your own copy too.
+            <p class="hint" id="editLinkHint">
               Anyone who has it can add to the playlist — that is how you invite people to contribute.
             </p>
           </div>
 
-          <p style="margin-top:20px">
+          <p style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap">
             <a id="goEdit" class="btn-ghost" href="#" style="display:inline-block">Start adding songs</a>
+            <a id="mailLinks" class="btn-ghost" href="#" style="display:inline-block">Email these to myself</a>
+            <button id="downloadLinks" type="button" class="btn-ghost">Save as a file</button>
           </p>
         </div>
       </section>
@@ -154,6 +166,7 @@
 
   </div>
 
+<script src="/account.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const STORE = "map.playlists";
@@ -163,13 +176,29 @@ function saved() {
   catch { return []; }
 }
 
+// Saved as "creator" so /mine can tell playlists you started apart from ones
+// somebody handed you the edit link to.
 function remember(slug, key, title) {
   const list = saved().filter((p) => p.slug !== slug);
-  list.unshift({ slug, key, title, savedAt: Date.now() });
+  list.unshift({ slug, key, title, role: "creator", savedAt: Date.now() });
   try { localStorage.setItem(STORE, JSON.stringify(list)); } catch {}
 }
 
 if (saved().length) $("navMine").hidden = false;
+
+// Whether the new playlist gets an owner is decided at creation time by the
+// server from the session cookie, so the copy has to match what will happen.
+let signedIn = false;
+window.accountReady.then((state) => {
+  signedIn = Boolean(state.user);
+  $("ownerNote").textContent = state.user
+    ? "You are signed in, so this playlist will be saved to your account and you can always get back to it."
+    : state.signInAvailable
+      ? "You are not signed in, so the edit link below is the only way back in. Sign in first and it is saved to your account instead."
+      : "The edit link below is the only way back in. Keep a copy.";
+  $("signInFirst").hidden = Boolean(state.user) || !state.signInAvailable;
+  $("signInFirst").href = "/auth/google?next=" + encodeURIComponent("/?new=1");
+});
 
 /* ------------------------------------------------------------ create panel */
 
@@ -196,6 +225,16 @@ const THEME_HINTS = {
 const themeSelect = $("theme");
 themeSelect.addEventListener("change", () => {
   $("themeHint").textContent = THEME_HINTS[themeSelect.value] || THEME_HINTS[""];
+});
+
+const VISIBILITY_HINTS = {
+  public: "Listed publicly. You can change this later.",
+  unlisted: "Kept out of Browse all. Anyone with the share link can still open it.",
+};
+
+const visibility = $("visibility");
+visibility.addEventListener("change", () => {
+  $("visibilityHint").textContent = VISIBILITY_HINTS[visibility.value];
 });
 
 const intro = $("intro");
@@ -232,6 +271,7 @@ $("create").addEventListener("click", async () => {
         creatorName: $("creator").value.trim(),
         intro: intro.value.trim(),
         theme: themeSelect.value,
+        isPublic: visibility.value === "public",
       }),
     });
     const body = await res.json();
@@ -249,6 +289,41 @@ $("create").addEventListener("click", async () => {
     $("shareLink").value = share;
     $("editLink").value = edit;
     $("goEdit").href = edit;
+
+    // The edit link is the whole playlist for a signed-out creator, so the
+    // page says so plainly and offers two ways to keep it that are not
+    // "hope this browser survives".
+    $("doneNotice").innerHTML = signedIn
+      ? "<strong>Your playlist exists.</strong> It is saved to your account, so you can always find it under Your playlists."
+      : "<strong>Your playlist exists.</strong> The edit link below is the only way back in — this is the only time it is shown.";
+    $("editLinkHint").textContent = signedIn
+      ? "Send this to anyone you want adding songs. You do not need it yourself — your account covers that."
+      : "Anyone who has it can add songs. Keep your own copy: clearing this browser's data loses it for good.";
+
+    const body_ = [
+      title,
+      "",
+      "Share link (anyone can listen):",
+      share,
+      "",
+      "Edit link (anyone with it can add songs — keep this private):",
+      edit,
+      "",
+    ].join("\n");
+
+    $("mailLinks").href =
+      "mailto:?subject=" + encodeURIComponent("Playlist links: " + title) +
+      "&body=" + encodeURIComponent(body_);
+
+    $("downloadLinks").onclick = () => {
+      const url = URL.createObjectURL(new Blob([body_], { type: "text/plain" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = title.replace(/[^a-z0-9]+/gi, "-").toLowerCase() + "-links.txt";
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
     $("createBody").hidden = true;
     $("done").hidden = false;
     $("navMine").hidden = false;

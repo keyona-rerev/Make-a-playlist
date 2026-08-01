@@ -32,34 +32,53 @@
         <a class="nav-item nav-item--cta" href="/?new=1">+ New playlist</a>
       </div>
 
-      <p class="sidebar-note">This list lives in this browser only — there is no account behind it yet.</p>
+      <p class="sidebar-note" id="sidebarNote"></p>
+      <div class="account-slot" data-account></div>
     </aside>
 
     <main class="main">
       <header class="header">
         <div>
-          <p class="eyebrow">This device</p>
           <h1>Your playlists</h1>
         </div>
       </header>
 
-      <p class="lede">
-        Every playlist you have made or opened an edit link for, on this browser.
-        Both links for each one are below.
-      </p>
+      <p class="lede" id="lede">Loading.</p>
 
-      <div class="mine-list" id="list"></div>
-
-      <div class="rail-panel">
-        <strong>This list lives in this browser.</strong> There are no accounts, so it
-        does not follow you to your phone or survive clearing your browsing data. The
-        links themselves never expire. Keep the edit links somewhere you trust and you
-        can always get back in. Every playlist is still public in <a href="/browse">Browse all</a> either way.
+      <div id="signInPrompt" class="rail-panel" hidden style="margin-bottom:28px">
+        <strong>Signing in keeps these.</strong> Right now this list lives in this
+        browser only — it does not follow you to your phone, and clearing your
+        browsing data loses the edit links with it.
+        <a href="#" id="signInLink">Sign in with Google</a> and the playlists you
+        own move into your account.
       </div>
+
+      <section id="accountSection" hidden>
+        <div class="browse-head">
+          <h2>In your account</h2>
+          <span class="browse-count" id="accountCount"></span>
+        </div>
+        <div class="mine-list" id="accountList"></div>
+      </section>
+
+      <section id="deviceSection" hidden style="margin-top:36px">
+        <div class="browse-head">
+          <h2>Saved on this device</h2>
+          <span class="browse-count" id="deviceCount"></span>
+        </div>
+        <div class="mine-list" id="deviceList"></div>
+      </section>
+
+      <div class="mine-list" id="emptyState" hidden>
+        <div class="panel empty">Nothing here yet. <a href="/?new=1">Make a playlist</a> and it will show up.</div>
+      </div>
+
+      <div class="rail-panel" id="footnote" style="margin-top:28px"></div>
     </main>
 
   </div>
 
+<script src="/account.js"></script>
 <script>
 const STORE = "map.playlists";
 const $ = (id) => document.getElementById(id);
@@ -70,9 +89,12 @@ function saved() {
 }
 
 function forget(slug) {
-  const kept = saved().filter((p) => p.slug !== slug);
-  localStorage.setItem(STORE, JSON.stringify(kept));
+  localStorage.setItem(STORE, JSON.stringify(saved().filter((p) => p.slug !== slug)));
   render();
+}
+
+function plural(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 function copyRow(labelText, value) {
@@ -108,79 +130,191 @@ function copyRow(labelText, value) {
   return field;
 }
 
+function action(tag, text, attrs = {}) {
+  const node = document.createElement(tag);
+  node.textContent = text;
+  if (tag === "button") node.type = "button";
+  Object.assign(node, attrs);
+  return node;
+}
+
+/* ---------------------------------------------------------- account cards */
+
+function accountCard(p) {
+  const card = document.createElement("div");
+  card.className = "card";
+
+  const title = document.createElement("h3");
+  title.textContent = p.title;
+
+  const bits = [
+    plural(p.trackCount, "song", "songs"),
+    p.theme === "birthday" ? "Painted scene" : "Liner notes",
+    p.isOwner ? "You own this" : "You added songs to this",
+  ];
+  if (p.isOwner && !p.isPublic) bits.push("Unlisted");
+  if (p.viewCount) bits.push(plural(p.viewCount, "play", "plays"));
+
+  const meta = document.createElement("p");
+  meta.className = "card-meta";
+  meta.textContent = bits.join(" · ");
+
+  card.append(title, meta, copyRow("Share link — anyone can listen", location.origin + "/p/" + p.slug));
+
+  const actions = document.createElement("div");
+  actions.className = "card-actions";
+  actions.append(
+    action("a", "Open it", { href: "/p/" + p.slug }),
+    // No fragment needed: the session identifies the owner, so the server
+    // authorizes this without the edit key being in the URL at all.
+    action("a", p.isOwner ? "Manage it" : "Add songs", { href: "/e/" + p.slug })
+  );
+  card.appendChild(actions);
+  return card;
+}
+
+/* ----------------------------------------------------------- device cards */
+
+function deviceCard(entry, signedIn) {
+  const card = document.createElement("div");
+  card.className = "card";
+
+  const title = document.createElement("h3");
+  title.textContent = entry.title || entry.slug;
+
+  // Recorded when the playlist was first saved on this device, so a playlist
+  // somebody sent you does not sit here looking like one of your own.
+  const origin = entry.role === "creator" ? "You made this" : "Shared with you";
+
+  const meta = document.createElement("p");
+  meta.className = "card-meta";
+  meta.textContent = origin + " · checking";
+
+  card.append(title, meta);
+
+  const share = location.origin + "/p/" + entry.slug;
+  const edit = location.origin + "/e/" + entry.slug + "#" + entry.key;
+
+  card.append(
+    copyRow("Share link — anyone can listen", share),
+    copyRow("Edit link — anyone can add songs", edit)
+  );
+
+  const actions = document.createElement("div");
+  actions.className = "card-actions";
+
+  const claim = action("button", "Save to my account");
+  claim.hidden = true;
+  claim.addEventListener("click", async () => {
+    claim.disabled = true;
+    claim.textContent = "Saving";
+    try {
+      const res = await fetch("/api/playlists/" + encodeURIComponent(entry.slug) + "/claim", {
+        method: "POST",
+        headers: { "X-Edit-Key": entry.key },
+      });
+      if (res.ok) return render();
+      claim.textContent = "Could not save it";
+    } catch {
+      claim.textContent = "Could not reach the server";
+    }
+  });
+
+  const drop = action("button", "Remove from this list");
+  drop.addEventListener("click", () => {
+    drop.textContent = "Removing";
+    forget(entry.slug);
+  });
+
+  actions.append(
+    action("a", "Open it", { href: share }),
+    action("a", "Add songs", { href: edit }),
+    claim,
+    drop
+  );
+  card.appendChild(actions);
+
+  // Refreshed from the server so a card does not go stale after the playlist
+  // is renamed or added to somewhere else.
+  fetch("/api/playlists/" + encodeURIComponent(entry.slug), {
+    headers: { "X-Edit-Key": entry.key },
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (!data) {
+        meta.textContent = "This playlist is no longer reachable";
+        return;
+      }
+      title.textContent = data.title;
+      const bits = [
+        data.hasOwner && !data.isOwner ? "Owned by someone else" : origin,
+        plural(data.tracks.length, "song", "songs"),
+        data.theme === "birthday" ? "Painted scene" : "Liner notes",
+      ];
+      if (!data.isPublic) bits.push("Unlisted");
+      meta.textContent = bits.join(" · ");
+      claim.hidden = !(signedIn && data.claimable);
+    })
+    .catch(() => { meta.textContent = "Could not reach the server"; });
+
+  return card;
+}
+
+/* ------------------------------------------------------------------ render */
+
 async function render() {
-  const list = $("list");
-  list.replaceChildren();
+  const state = await window.accountReady;
+  const signedIn = Boolean(state.user);
 
-  const entries = saved();
-  if (!entries.length) {
-    const empty = document.createElement("div");
-    empty.className = "panel empty";
-    empty.textContent = "Nothing here yet. Make a playlist and it will show up.";
-    list.appendChild(empty);
-    return;
+  $("signInPrompt").hidden = signedIn || !state.signInAvailable;
+  $("signInLink").href = "/auth/google?next=" + encodeURIComponent("/mine");
+
+  $("sidebarNote").textContent = signedIn
+    ? "Playlists you own are in your account and follow you between devices."
+    : "This list lives in this browser only until you sign in.";
+
+  let accountList = [];
+  if (signedIn) {
+    try {
+      const res = await fetch("/api/my/playlists");
+      if (res.ok) accountList = (await res.json()).playlists || [];
+    } catch {
+      /* Falls through to the device list, which still works offline of it. */
+    }
   }
 
-  for (const entry of entries) {
-    const card = document.createElement("div");
-    card.className = "card";
+  const inAccount = new Set(accountList.map((p) => p.slug));
+  // A playlist already in the account does not need its device copy listed
+  // twice — the account entry is the better one, since it cannot be lost.
+  const deviceList = saved().filter((entry) => !inAccount.has(entry.slug));
 
-    const title = document.createElement("h3");
-    title.textContent = entry.title || entry.slug;
+  const accountEl = $("accountList");
+  accountEl.replaceChildren(...accountList.map(accountCard));
+  $("accountSection").hidden = !accountList.length;
+  $("accountCount").textContent = accountList.length
+    ? plural(accountList.length, "playlist", "playlists")
+    : "";
 
-    const meta = document.createElement("p");
-    meta.className = "card-meta";
-    meta.textContent = "Checking";
+  const deviceEl = $("deviceList");
+  deviceEl.replaceChildren(...deviceList.map((entry) => deviceCard(entry, signedIn)));
+  $("deviceSection").hidden = !deviceList.length;
+  $("deviceCount").textContent = deviceList.length
+    ? plural(deviceList.length, "playlist", "playlists")
+    : "";
 
-    card.append(title, meta);
+  $("emptyState").hidden = Boolean(accountList.length || deviceList.length);
 
-    const share = location.origin + "/p/" + entry.slug;
-    const edit = location.origin + "/e/" + entry.slug + "#" + entry.key;
+  $("lede").textContent = signedIn
+    ? "Playlists you own or have added songs to, plus anything still saved only in this browser."
+    : "Every playlist you have made or opened an edit link for, on this browser.";
 
-    card.append(
-      copyRow("Share link — anyone can listen", share),
-      copyRow("Edit link — anyone can add songs", edit)
-    );
-
-    const actions = document.createElement("div");
-    actions.className = "card-actions";
-
-    const open = document.createElement("a");
-    open.href = share;
-    open.textContent = "Open it";
-
-    const editIt = document.createElement("a");
-    editIt.href = edit;
-    editIt.textContent = "Add songs";
-
-    const drop = document.createElement("button");
-    drop.type = "button";
-    drop.textContent = "Remove from this list";
-    drop.addEventListener("click", () => {
-      drop.textContent = "Removing";
-      forget(entry.slug);
-    });
-
-    actions.append(open, editIt, drop);
-    card.appendChild(actions);
-    list.appendChild(card);
-
-    // Refresh the title and song count from the server so the card does not
-    // go stale after the playlist is renamed or added to elsewhere.
-    fetch("/api/playlists/" + encodeURIComponent(entry.slug))
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data) {
-          meta.textContent = "This playlist is no longer reachable";
-          return;
-        }
-        title.textContent = data.title;
-        const look = data.theme === "birthday" ? "Painted scene" : "Liner notes";
-        const n = data.tracks.length;
-        meta.textContent = `${n} ${n === 1 ? "song" : "songs"} · ${look}`;
-      })
-      .catch(() => { meta.textContent = "Could not reach the server"; });
-  }
+  $("footnote").innerHTML = signedIn
+    ? "Playlists in your account are safe to lose the edit link for — you can always get back in from here. " +
+      "Anything under <strong>Saved on this device</strong> is not yet in your account; use " +
+      "<em>Save to my account</em> on those cards to move them over."
+    : "<strong>This list lives in this browser.</strong> Signed out, there is nothing else holding " +
+      "these edit links, so clearing your browsing data loses them for good. The links themselves " +
+      "never expire. Public playlists are also in <a href=\"/browse\">Browse all</a> either way.";
 }
 
 render();
