@@ -205,8 +205,9 @@ async function loadPlaylist(slug) {
 // probing with a write.
 function publicShape(playlist, tracks, req) {
   const isOwner = req ? ownsIt(req, playlist) : false;
+  const operator = req ? isOperator(req) : false;
   const hasKey = req ? holdsEditKey(req, playlist) : false;
-  const canEdit = isOwner || hasKey;
+  const canEdit = isOwner || operator || hasKey;
   return {
     slug: playlist.slug,
     title: playlist.title,
@@ -220,7 +221,9 @@ function publicShape(playlist, tracks, req) {
     isOwner,
     // Administrative actions belong to the owner once there is one. Until
     // then the edit key is the only credential in existence, so it carries them.
-    canAdminister: playlist.owner_id ? isOwner : hasKey,
+    canAdminister: playlist.owner_id ? isOwner || operator : hasKey || operator,
+    isOperator: operator,
+    reportEmail: process.env.REPORT_EMAIL || "",
     claimable: Boolean(!playlist.owner_id && hasKey),
     tracks: tracks.map((t) => ({
       id: t.id,
@@ -303,13 +306,30 @@ const holdsEditKey = (req, playlist) =>
 const ownsIt = (req, playlist) =>
   Boolean(req.user && playlist.owner_id && String(playlist.owner_id) === String(req.user.id));
 
+// Anyone can publish to the public feed without an account, so somebody has to
+// be able to take something down. Operators act on any playlist through the
+// ordinary edit page rather than a separate admin surface.
+const OPERATORS = new Set(
+  (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+const isOperator = (req) =>
+  Boolean(req.user && OPERATORS.has(String(req.user.email || "").toLowerCase()));
+
+// Kept separate from ownsIt so "this is yours" stays literally true in the UI
+// and an operator is shown as what they actually are.
+const canAct = (req, playlist) => ownsIt(req, playlist) || isOperator(req);
+
 async function requireEditKey(req, res) {
   const found = await loadPlaylist(req.params.slug);
   if (!found) {
     res.status(404).json({ error: "No playlist with that link." });
     return null;
   }
-  if (!holdsEditKey(req, found.playlist) && !ownsIt(req, found.playlist)) {
+  if (!holdsEditKey(req, found.playlist) && !canAct(req, found.playlist)) {
     res.status(403).json({ error: "You need the edit link for this playlist, or to be signed in as its owner." });
     return null;
   }
@@ -322,7 +342,7 @@ async function requireEditKey(req, res) {
 // enough to quietly erase someone else's work.
 function canModifyTrack(req, playlist, track) {
   if (!playlist.owner_id) return true;
-  if (ownsIt(req, playlist)) return true;
+  if (canAct(req, playlist)) return true;
   return Boolean(
     req.user &&
       track.contributor_user_id &&
@@ -336,7 +356,7 @@ async function requireAdmin(req, res) {
   const found = await requireEditKey(req, res);
   if (!found) return null;
   const p = found.playlist;
-  if (p.owner_id && !ownsIt(req, p)) {
+  if (p.owner_id && !canAct(req, p)) {
     res.status(403).json({
       error: "Only the person who owns this playlist can change or delete it. You can still add songs.",
     });

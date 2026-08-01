@@ -515,6 +515,19 @@
                 $("chrome-plays").textContent = String(data.viewCount);
             }
 
+            if (data.reportEmail) {
+                const here = location.origin + "/p/" + slug;
+                const link = document.createElement("a");
+                link.className = "sys-text sys-link";
+                link.style.marginLeft = "1.5rem";
+                link.textContent = "REPORT";
+                link.href =
+                    "mailto:" + data.reportEmail +
+                    "?subject=" + encodeURIComponent("Reporting a playlist: " + slug) +
+                    "&body=" + encodeURIComponent(`Playlist: ${data.title}\n${here}\n\nWhat is wrong with it:\n`);
+                $("open-index").after(link);
+            }
+
             $("share").addEventListener("click", async () => {
                 const url = location.origin + "/p/" + slug;
                 if (navigator.share) {

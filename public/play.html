@@ -16,6 +16,7 @@
       <p class="intro" id="intro"></p>
       <div class="masthead-actions" id="actions" hidden>
         <button id="share" type="button">Share this playlist</button>
+        <a id="manage" class="btn-ghost" href="#" hidden>Manage it</a>
         <span class="meta" id="stats"></span>
       </div>
     </header>
@@ -44,6 +45,7 @@
 
     <p class="meta" style="margin-top:3rem">
       <a href="/">Make your own playlist</a> · <a href="/browse">Browse everyone else's</a>
+      <span id="reportWrap" hidden> · <a id="report" href="#">Report this playlist</a></span>
     </p>
   </div>
 
@@ -213,6 +215,26 @@ function setUpSharing() {
     `${songs} ${songs === 1 ? "song" : "songs"}` +
     (plays ? ` · ${plays} ${plays === 1 ? "play" : "plays"}` : "");
   $("actions").hidden = false;
+
+  // Owners land here from a shared link as often as anyone, and an operator
+  // arriving from Browse has no other route to the edit page.
+  if (data.canEdit) {
+    $("manage").href = "/e/" + slug;
+    $("manage").hidden = false;
+  }
+
+  // Anyone can publish here without an account, so there has to be a way to
+  // flag something. Only shown when the site has an address configured.
+  if (data.reportEmail) {
+    const url = location.origin + "/p/" + slug;
+    $("report").href =
+      "mailto:" + data.reportEmail +
+      "?subject=" + encodeURIComponent("Reporting a playlist: " + slug) +
+      "&body=" + encodeURIComponent(
+        `Playlist: ${data.title}\n${url}\n\nWhat is wrong with it:\n`
+      );
+    $("reportWrap").hidden = false;
+  }
 
   const btn = $("share");
   btn.addEventListener("click", async () => {

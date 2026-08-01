@@ -823,9 +823,13 @@ function paint() {
   // things. A guest is here to add a song, not to be handed somebody else's
   // credential and told to look after it.
   if (owner) {
-    $("roleBanner").innerHTML =
-      "<strong>This playlist is yours.</strong> Add songs, rearrange them, change how it " +
-      "looks, and send the edit link to anyone you want contributing.";
+    // An operator gets an owner's powers over someone else's playlist. Saying
+    // "this is yours" there would be a lie, and the wrong frame for a takedown.
+    $("roleBanner").innerHTML = data.isOperator && !data.isOwner
+      ? "<strong>You are signed in as a site operator.</strong> This playlist belongs to " +
+        "someone else. You can unlist or delete it, and everything you do here is done as them."
+      : "<strong>This playlist is yours.</strong> Add songs, rearrange them, change how it " +
+        "looks, and send the edit link to anyone you want contributing.";
     $("linksHeading").textContent = "Your two links";
     $("editLinkLabel").textContent = "Keep this one — anyone with it can add songs";
 
