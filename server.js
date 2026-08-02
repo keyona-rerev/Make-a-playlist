@@ -92,9 +92,30 @@ const SESSION_DAYS = 30;
 // to the default liner-notes page.
 const THEMES = { birthday: "play-birthday.html" };
 
+// Every ALTER here takes an ACCESS EXCLUSIVE lock, and a zero-downtime deploy
+// leaves the previous container connected and using these same tables while
+// the new one boots. With no bound on the wait, the new container blocks on
+// that lock forever and never starts listening — no error, no log, just a
+// deploy that hangs. So the lock wait is bounded and the whole thing retried:
+// the contention clears on its own once the old container is torn down.
+const MIGRATE_ATTEMPTS = 12;
+
 async function migrate() {
-  await pool.query(SCHEMA);
-  console.log("schema ready");
+  for (let attempt = 1; attempt <= MIGRATE_ATTEMPTS; attempt++) {
+    const client = await pool.connect();
+    try {
+      await client.query("SET lock_timeout = '5s'");
+      await client.query(SCHEMA);
+      console.log("schema ready");
+      return;
+    } catch (err) {
+      if (err.code !== "55P03" || attempt === MIGRATE_ATTEMPTS) throw err;
+      console.log(`schema locked by the previous instance, retrying (${attempt}/${MIGRATE_ATTEMPTS})`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    } finally {
+      client.release();
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ limits */
