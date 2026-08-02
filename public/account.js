@@ -19,8 +19,8 @@
     }
   }
 
-  // A fragment never reaches the server, so an edit key cannot ride along in
-  // the OAuth round trip. It is already in localStorage from the first visit,
+  // A fragment is not part of what gets sent, so an edit key cannot ride along
+  // to the sign-in page. It is already in localStorage from the first visit,
   // so the key is put back on return instead of being carried through.
   function returnPath() {
     return location.pathname + location.search;
@@ -36,7 +36,7 @@
   function renderSignedOut(slot, state) {
     if (!state.signInAvailable) return;
     const link = el("a", "account-link", "Sign in");
-    link.href = "/auth/google?next=" + encodeURIComponent(returnPath());
+    link.href = "/signin?next=" + encodeURIComponent(returnPath());
     link.title = "Keeps your playlists with you across devices";
     slot.replaceChildren(link);
   }

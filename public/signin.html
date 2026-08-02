@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <title>Sign in — Make a Playlist</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/home.css">
+</head>
+<body>
+  <div class="blob-container">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <div class="shell shell--two-col">
+
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark"></span> Make a playlist</a>
+
+      <div class="nav-group">
+        <div class="nav-label">Menu</div>
+        <a class="nav-item" href="/">Home</a>
+        <a class="nav-item" href="/browse">Browse all</a>
+        <a class="nav-item" href="/mine" id="navMine" hidden>Your playlists</a>
+      </div>
+
+      <p class="sidebar-note">
+        An account here is a place to keep your playlists, not a lock on them.
+        Everything works signed out too.
+      </p>
+    </aside>
+
+    <main class="main">
+      <header class="header">
+        <div><h1 id="heading">Sign in</h1></div>
+      </header>
+
+      <p class="lede" id="lede">
+        So your playlists follow you between your laptop and your phone,
+        instead of living in one browser.
+      </p>
+
+      <section class="panel" style="max-width:460px">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false">
+        </div>
+
+        <div class="field" id="nameField" hidden>
+          <label for="name">Your name</label>
+          <input id="name" maxlength="200" autocomplete="name">
+          <p class="hint">Shown on songs you add. You can leave it blank.</p>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password">
+          <p class="hint" id="passwordHint"></p>
+        </div>
+
+        <div id="formError" hidden></div>
+        <button id="submit" type="button" class="btn-primary">Sign in</button>
+
+        <p class="hint" style="margin-top:18px">
+          <span id="switchPrompt">No account yet?</span>
+          <a href="#" id="switchMode">Create one</a>
+        </p>
+      </section>
+    </main>
+
+  </div>
+
+<script src="/account.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+
+// Where to go afterwards. Only same-site paths, so this cannot be used to
+// bounce somebody to another domain after they sign in.
+const params = new URLSearchParams(location.search);
+const rawNext = params.get("next") || "/mine";
+const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/mine";
+
+let creating = params.get("mode") === "new";
+
+function paint() {
+  $("heading").textContent = creating ? "Create an account" : "Sign in";
+  $("lede").textContent = creating
+    ? "It keeps a list of the playlists you make, so losing an edit link stops mattering."
+    : "So your playlists follow you between your laptop and your phone, instead of living in one browser.";
+  $("nameField").hidden = !creating;
+  $("submit").textContent = creating ? "Create account" : "Sign in";
+  $("passwordHint").textContent = creating ? "At least 8 characters." : "";
+  $("password").autocomplete = creating ? "new-password" : "current-password";
+  $("switchPrompt").textContent = creating ? "Already have an account?" : "No account yet?";
+  $("switchMode").textContent = creating ? "Sign in" : "Create one";
+}
+
+// Deliberately not part of paint(): the failure path repaints the button
+// labels, and clearing the message there meant the reason for the failure
+// appeared and vanished in the same frame.
+function clearError() {
+  $("formError").hidden = true;
+}
+
+$("switchMode").addEventListener("click", (e) => {
+  e.preventDefault();
+  creating = !creating;
+  clearError();
+  paint();
+});
+
+function fail(message) {
+  const box = $("formError");
+  box.hidden = false;
+  box.className = "notice notice--error";
+  box.style.marginBottom = "18px";
+  box.textContent = message;
+}
+
+async function submit() {
+  clearError();
+
+  const email = $("email").value.trim();
+  const password = $("password").value;
+  if (!email) return fail("Enter your email address.");
+  if (!password) return fail("Enter your password.");
+
+  const btn = $("submit");
+  btn.disabled = true;
+  btn.textContent = creating ? "Creating" : "Signing in";
+
+  try {
+    const res = await fetch(creating ? "/api/auth/signup" : "/api/auth/signin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        creating ? { email, password, name: $("name").value.trim() } : { email, password }
+      ),
+    });
+    const body = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      fail(body.error || "That did not work. Try again.");
+      btn.disabled = false;
+      paint();
+      return;
+    }
+
+    // Anything this browser was holding on to gets attached to the new
+    // account, so signing in gathers up what you already made rather than
+    // showing you an empty list.
+    await claimSaved();
+    location.href = next;
+  } catch {
+    fail("Could not reach the server. Try again.");
+    btn.disabled = false;
+    paint();
+  }
+}
+
+async function claimSaved() {
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem("map.playlists") || "[]"); } catch { return; }
+
+  await Promise.all(
+    saved.map((entry) =>
+      fetch("/api/playlists/" + encodeURIComponent(entry.slug) + "/claim", {
+        method: "POST",
+        headers: { "X-Edit-Key": entry.key },
+      }).catch(() => {})
+    )
+  );
+}
+
+$("submit").addEventListener("click", submit);
+["email", "password", "name"].forEach((id) => {
+  $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+});
+
+paint();
+</script>
+</body>
+</html>

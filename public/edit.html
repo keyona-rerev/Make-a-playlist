@@ -38,7 +38,7 @@
         <h2 style="margin-bottom:0.75rem">Make this yours</h2>
         <p id="claimText" style="color:var(--paper-dim); margin-bottom:1.25rem"></p>
         <button id="claimBtn" type="button" class="btn-primary" hidden>Save to my account</button>
-        <a id="claimSignIn" class="btn-ghost" href="#" hidden>Sign in with Google</a>
+        <a id="claimSignIn" class="btn-ghost" href="#" hidden>Make an account</a>
       </section>
 
       <section class="links-panel" style="margin-bottom:2.5rem">
@@ -975,7 +975,7 @@ function paint() {
         "Sign in and you can attach it to your account, so losing the link stops mattering.";
       $("claimBtn").hidden = true;
       $("claimSignIn").hidden = false;
-      $("claimSignIn").href = "/auth/google?next=" + encodeURIComponent("/e/" + slug);
+      $("claimSignIn").href = "/signin?next=" + encodeURIComponent("/e/" + slug);
     } else {
       panel.hidden = true;
     }

@@ -16,9 +16,12 @@ Three kinds of people use this, and the app treats them differently.
 
 Nobody has to sign up. Everything works signed out, and links already sent keep working — accounts are additive, never a gate.
 
+An account is **an email and a password**, and it exists so there is one place that lists your playlists. It is not protecting anything sensitive: the edit link is still the credential that gates contributing, and every playlist is reachable by link with no account at all. There is no identity provider to configure, so sign-in works on a fresh deploy with nothing set up.
+
 - **Creating a playlist** returns a public link and a secret edit link.
-- **Signed out**, the edit link is the only way back in. It is kept in `localStorage` and offered as an email or a downloadable file at the moment it is created, because that is the only time it is shown.
-- **Signed in** (Google), a playlist you create is owned by you and reachable from `/mine` on any device, with or without the edit link.
+- **Signed out**, the edit link is the only way back in. It is kept in `localStorage`, offered as an email or a downloadable file at the moment it is created, and can be pasted back in at `/mine` if this browser forgets it.
+- **Signed in**, a playlist you create is owned by you and reachable from `/mine` on any device, with or without the edit link.
+- **Signing in gathers up what this browser already has**: every playlist saved locally is claimed to the account on the way through, so the list is not empty the first time.
 - **Claiming**: a playlist with no owner can be attached to your account by anyone holding its edit link. First claim wins, so handing out the link cannot take the playlist from you.
 - **Attribution** is self-reported for signed-out contributors and taken from the account for signed-in ones, which is what the ✓ next to a name means.
 
@@ -52,7 +55,7 @@ A playlist with no owner has nobody else to ask, so the edit key carries the own
 **playlist_tracks**
 `id`, `playlist_id`, `position`, `title`, `artist`, `youtube_id`, `artist_name`, `artist_context`, `commentary`, `contributor_name`, `contributor_user_id`, `created_at`
 
-**users** `id`, `google_sub`, `email`, `display_name`, `avatar_url`, `created_at`
+**users** `id`, `email`, `display_name`, `avatar_url`, `password_hash`, `created_at`
 **sessions** `token_hash`, `user_id`, `expires_at`, `created_at` — one row per login, so signing in on your phone does not end the session on your laptop.
 
 Tracks are rows rather than a JSONB blob so two people adding songs at the same time do not overwrite each other.
@@ -72,25 +75,30 @@ Tracks are rows rather than a JSONB blob so two people adding songs at the same 
 | `POST` | `/api/playlists/:slug/tracks` | Add a track. Edit link or owner. |
 | `PATCH` | `/api/playlists/:slug/tracks/:id` | Edit a track. Your own, or any if you own the playlist. |
 | `DELETE` | `/api/playlists/:slug/tracks/:id` | Remove a track. Same rule as editing. |
-| `GET` | `/api/me` | Current user, and whether sign-in is configured. |
+| `POST` | `/api/auth/signup` | Create an account. Email, password, optional name. |
+| `POST` | `/api/auth/signin` | Sign in. Sets the session cookie. |
+| `POST` | `/auth/signout` | Ends this session only. |
+| `GET` | `/api/me` | Current user. |
 | `GET` | `/api/my/playlists` | Playlists you own or have contributed to. |
 | `GET` | `/api/oembed` | YouTube title lookup, proxied because oEmbed sends no CORS headers. |
 | `GET` | `/p/:slug` | Server-rendered shell with OG tags for link previews. |
 
-Sign-in lives at `/auth/google`, `/auth/google/callback` and `/auth/signout`, and is only advertised when `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set.
+Sign-in needs no configuration. Passwords are hashed with scrypt from Node's own `crypto`, so the dependency list stays at `express` and `pg`.
 
 ## Notes on the secret link
 
 The edit key lives in the URL fragment (`#key`), not the query string, so it stays out of server logs and referrer headers. The client reads `location.hash` and sends the key as a request header. Only a hash of the token is stored, so a lost key cannot be looked up — an owner mints a replacement instead, which also revokes the old one.
 
-A fragment does not survive an OAuth round trip, so the key is restored from `localStorage` on return. That also means a bare `/e/:slug` bookmark still works.
+A fragment is not part of what a link carries to the server, so it does not survive a trip through the sign-in page. The key is restored from `localStorage` on return, which also means a bare `/e/:slug` bookmark still works.
 
 ## Constraints
 
 - YouTube IDs are validated against `^[A-Za-z0-9_-]{11}$` before they reach an iframe `src`.
 - All user text renders via `textContent`, never `innerHTML`.
 - API responses are `Cache-Control: no-store`. What comes back depends on the edit-key header and the session cookie, neither of which the browser cache keys on.
-- Playlist creation is rate limited by IP.
+- Passwords are stored as a salted scrypt hash, never in the clear. Nothing here is sensitive, but people reuse passwords across sites.
+- A wrong password and a missing account return the same message, so this cannot be used to find out which emails have accounts.
+- Playlist creation, signup and sign-in are rate limited by IP, counted per route so one cannot exhaust another.
 - Caps: 40 tracks per playlist, 2000 characters per commentary block.
 
 ## Running it
@@ -101,4 +109,4 @@ DATABASE_URL=postgres://... npm start     # migrates on boot, then listens
 DATABASE_URL=postgres://... npm run seed   # optional demo playlist
 ```
 
-Optional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_URL`, `PORT`.
+Optional: `PORT`, `ADMIN_EMAILS` (comma-separated; those accounts can moderate any playlist), `REPORT_EMAIL` (shows a report link on play pages).

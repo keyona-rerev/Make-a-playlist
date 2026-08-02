@@ -49,8 +49,8 @@
         <strong>Signing in keeps these.</strong> Right now this list lives in this
         browser only — it does not follow you to your phone, and clearing your
         browsing data loses the edit links with it.
-        <a href="#" id="signInLink">Sign in with Google</a> and the playlists you
-        own move into your account.
+        <a href="#" id="signInLink">Make an account</a> — email and a password, nothing
+        else — and the playlists you own move into it.
       </div>
 
       <section id="accountSection" hidden>
@@ -311,7 +311,7 @@ async function render() {
   const signedIn = Boolean(state.user);
 
   $("signInPrompt").hidden = signedIn || !state.signInAvailable;
-  $("signInLink").href = "/auth/google?next=" + encodeURIComponent("/mine");
+  $("signInLink").href = "/signin?mode=new&next=" + encodeURIComponent("/mine");
 
   $("sidebarNote").textContent = signedIn
     ? "Playlists you own are in your account and follow you between devices."

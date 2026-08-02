@@ -2,6 +2,7 @@ const express = require("express");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { promisify } = require("util");
 const { Pool } = require("pg");
 
 const app = express();
@@ -50,7 +51,6 @@ ALTER TABLE playlists ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS users (
   id           BIGSERIAL PRIMARY KEY,
-  google_sub   TEXT UNIQUE NOT NULL,
   email        TEXT NOT NULL,
   display_name TEXT NOT NULL DEFAULT '',
   avatar_url   TEXT NOT NULL DEFAULT '',
@@ -76,6 +76,14 @@ CREATE INDEX IF NOT EXISTS idx_tracks_contributor ON playlist_tracks (contributo
 -- so every playlist is listed there unless this is later flipped to false.
 ALTER TABLE playlists ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT true;
 CREATE INDEX IF NOT EXISTS idx_playlists_public ON playlists (is_public, updated_at DESC);
+
+-- Accounts are email and password. The point of an account here is having one
+-- place that lists your playlists, not protecting anything sensitive — so
+-- there is no external identity provider to configure and nothing to set up
+-- before sign-in works.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE users DROP COLUMN IF EXISTS google_sub;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (lower(email));
 `;
 
 const SESSION_DAYS = 30;
@@ -120,16 +128,20 @@ function tokenMatches(supplied, storedHash) {
 
 const hits = new Map();
 
-function rateLimit(max, windowMs) {
+// Counted per route as well as per address. Sharing one counter across every
+// limited route meant mistyping a password a few times used up the budget for
+// creating a playlist, which is not a connection anyone would expect.
+function rateLimit(bucket, max, windowMs, message) {
   return (req, res, next) => {
     const ip = req.headers["x-forwarded-for"]?.split(",")[0].trim() || req.ip;
+    const cacheKey = bucket + "|" + ip;
     const now = Date.now();
-    const recent = (hits.get(ip) || []).filter((t) => now - t < windowMs);
+    const recent = (hits.get(cacheKey) || []).filter((t) => now - t < windowMs);
     if (recent.length >= max) {
-      return res.status(429).json({ error: "Too many playlists too fast. Try again in a bit." });
+      return res.status(429).json({ error: message || "Too many requests too fast. Try again in a bit." });
     }
     recent.push(now);
-    hits.set(ip, recent);
+    hits.set(cacheKey, recent);
     next();
   };
 }
@@ -165,18 +177,40 @@ function setCookie(res, name, value, maxAgeSeconds) {
 
 const clearCookie = (res, name) => setCookie(res, name, "", 0);
 
-/* -------------------------------------------------------------------- oauth */
+/* ---------------------------------------------------------------- passwords */
+// scrypt from Node's own crypto, so the dependency list stays at express and
+// pg. Nothing here is sensitive, but people reuse passwords across sites, so
+// what gets stored is a salted hash rather than the password itself.
 
-const oauthReady = () =>
-  Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+const scrypt = promisify(crypto.scrypt);
+const SCRYPT_KEYLEN = 64;
 
-function baseUrl(req) {
-  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, "");
-  if (process.env.RAILWAY_PUBLIC_DOMAIN) return "https://" + process.env.RAILWAY_PUBLIC_DOMAIN;
-  return `${req.protocol}://${req.get("host")}`;
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derived = await scrypt(password, salt, SCRYPT_KEYLEN);
+  return `scrypt$${salt}$${derived.toString("hex")}`;
 }
 
-const redirectUri = (req) => baseUrl(req) + "/auth/google/callback";
+async function passwordMatches(password, stored) {
+  if (!stored) return false;
+  const [scheme, salt, hex] = String(stored).split("$");
+  if (scheme !== "scrypt" || !salt || !hex) return false;
+  const derived = await scrypt(password, salt, SCRYPT_KEYLEN);
+  const expected = Buffer.from(hex, "hex");
+  return derived.length === expected.length && crypto.timingSafeEqual(derived, expected);
+}
+
+const MIN_PASSWORD = 8;
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Never includes password_hash. Everything that hands a user back to the
+// browser goes through here so that stays true.
+const shapeUser = (u) => ({
+  id: u.id,
+  name: u.display_name,
+  email: u.email,
+  avatar: u.avatar_url || "",
+});
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -367,90 +401,67 @@ async function requireAdmin(req, res) {
 
 /* --------------------------------------------------------------------- api */
 
-app.get("/healthz", (req, res) => res.json({ ok: true, signIn: oauthReady() }));
+app.get("/healthz", (req, res) => res.json({ ok: true, signIn: true }));
 
 /* ------------------------------------------------------------ auth routes */
 
 app.get("/api/me", (req, res) => {
+  // Always available now: accounts are email and password, so there is no
+  // provider to configure and nothing that can leave sign-in switched off.
   res.json({
-    signInAvailable: oauthReady(),
-    user: req.user
-      ? { id: req.user.id, name: req.user.display_name, email: req.user.email, avatar: req.user.avatar_url }
-      : null,
+    signInAvailable: true,
+    user: req.user ? shapeUser(req.user) : null,
   });
 });
 
-app.get("/auth/google", (req, res) => {
-  if (!oauthReady()) return res.redirect("/?signin=unavailable");
+// Signing up is the same shape as signing in, because the difference is not
+// interesting to the person doing it: give an email and a password, get an
+// account. Both hand back a session cookie and the user, so the page that
+// called them can carry straight on.
+app.post("/api/auth/signup", rateLimit("signup", 10, 3600000, "Too many accounts from here. Try again later."), async (req, res, next) => {
+  const email = clean(req.body.email, MAX_SHORT).toLowerCase();
+  const password = String(req.body.password ?? "");
+  const name = clean(req.body.name, MAX_SHORT);
 
-  const state = randomId(24);
-  setCookie(res, "oauth_state", state, 600);
-  setCookie(res, "oauth_next", clean(req.query.next, 300) || "/mine", 600);
-
-  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
-  url.searchParams.set("redirect_uri", redirectUri(req));
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "openid email profile");
-  url.searchParams.set("state", state);
-  url.searchParams.set("prompt", "select_account");
-  res.redirect(url.toString());
-});
-
-app.get("/auth/google/callback", async (req, res, next) => {
-  if (!oauthReady()) return res.redirect("/?signin=unavailable");
-
-  const jar = cookies(req);
-  clearCookie(res, "oauth_state");
-  clearCookie(res, "oauth_next");
-
-  if (!req.query.code || !req.query.state || req.query.state !== jar.oauth_state) {
-    return res.redirect("/?signin=failed");
+  if (!EMAIL_SHAPE.test(email)) return res.status(400).json({ error: "That does not look like an email address." });
+  if (password.length < MIN_PASSWORD) {
+    return res.status(400).json({ error: `Use at least ${MIN_PASSWORD} characters for the password.` });
   }
 
   try {
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code: String(req.query.code),
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: redirectUri(req),
-        grant_type: "authorization_code",
-      }),
-    });
-    if (!tokenRes.ok) return res.redirect("/?signin=failed");
-
-    const { id_token: idToken } = await tokenRes.json();
-    if (!idToken) return res.redirect("/?signin=failed");
-
-    // The token came straight from Google over TLS in a server-to-server
-    // exchange, so the payload can be read without re-verifying the signature.
-    const payload = JSON.parse(Buffer.from(idToken.split(".")[1], "base64url").toString("utf8"));
-    if (!payload.sub || !payload.email) return res.redirect("/?signin=failed");
-
     const { rows } = await pool.query(
-      `INSERT INTO users (google_sub, email, display_name, avatar_url)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (google_sub) DO UPDATE
-         SET email = EXCLUDED.email,
-             display_name = EXCLUDED.display_name,
-             avatar_url = EXCLUDED.avatar_url
-       RETURNING *`,
-      [
-        payload.sub,
-        clean(payload.email, MAX_SHORT),
-        clean(payload.name || payload.given_name || "", MAX_SHORT),
-        clean(payload.picture || "", 500),
-      ]
+      `INSERT INTO users (email, display_name, password_hash)
+       VALUES ($1, $2, $3) RETURNING *`,
+      [email, name || email.split("@")[0], await hashPassword(password)]
     );
 
-    const token = await newSession(rows[0].id);
-    setCookie(res, "sid", token, SESSION_DAYS * 24 * 3600);
+    setCookie(res, "sid", await newSession(rows[0].id), SESSION_DAYS * 24 * 3600);
+    res.status(201).json({ user: shapeUser(rows[0]) });
+  } catch (err) {
+    // The unique index on lower(email) is what decides this, rather than a
+    // read first, so two simultaneous signups cannot both think they won.
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "There is already an account with that email. Sign in instead." });
+    }
+    next(err);
+  }
+});
 
-    const next = jar.oauth_next && jar.oauth_next.startsWith("/") ? jar.oauth_next : "/mine";
-    res.redirect(next);
+app.post("/api/auth/signin", rateLimit("signin", 20, 900000, "Too many sign-in attempts. Wait a few minutes and try again."), async (req, res, next) => {
+  const email = clean(req.body.email, MAX_SHORT).toLowerCase();
+  const password = String(req.body.password ?? "");
+
+  try {
+    const { rows } = await pool.query("SELECT * FROM users WHERE lower(email) = $1", [email]);
+    // One message for both a missing account and a wrong password, so this
+    // cannot be used to find out which emails have accounts.
+    const wrong = { error: "That email and password do not match an account." };
+    if (!rows[0] || !(await passwordMatches(password, rows[0].password_hash))) {
+      return res.status(401).json(wrong);
+    }
+
+    setCookie(res, "sid", await newSession(rows[0].id), SESSION_DAYS * 24 * 3600);
+    res.json({ user: shapeUser(rows[0]) });
   } catch (err) {
     next(err);
   }
@@ -594,7 +605,7 @@ app.get("/api/playlists", async (req, res) => {
   });
 });
 
-app.post("/api/playlists", rateLimit(5, 3600000), async (req, res) => {
+app.post("/api/playlists", rateLimit("create", 5, 3600000, "Too many playlists too fast. Try again in a bit."), async (req, res) => {
   const title = clean(req.body.title, MAX_SHORT);
   if (!title) return res.status(400).json({ error: "Give the playlist a title." });
 
