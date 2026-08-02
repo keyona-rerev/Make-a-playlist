@@ -59,7 +59,7 @@
                it is a button rather than a field the owner is told to guard. -->
           <div class="invite-actions" id="inviteActions" hidden>
             <button id="invite" type="button" class="btn-primary">Invite someone to add songs</button>
-            <a id="inviteMail" class="btn-ghost" href="#">Invite by email</a>
+            <button id="inviteMail" type="button">Invite by email</button>
           </div>
           <p class="hint" id="inviteStatus" role="status" aria-live="polite"></p>
 
@@ -196,6 +196,7 @@
   </div>
 
 <script src="/account.js"></script>
+<script src="/invite.js"></script>
 <script>
 const slug = location.pathname.split("/").filter(Boolean)[1];
 const STORE = "map.playlists";
@@ -746,42 +747,37 @@ $("deleteBtn").addEventListener("click", async () => {
 
 /* ------------------------------------------------------------------ invite */
 
-// A bare URL pasted into a chat does not explain itself, and this one asks
-// something of the person receiving it. The message goes with the link.
-function inviteMessage() {
-  const url = location.origin + "/e/" + slug + "#" + key;
-  const name = data.creatorName ? data.creatorName + " is" : "I am";
-  return {
-    url,
-    subject: `Add a song to “${data.title}”`,
-    body:
-      `${name} putting together a playlist called “${data.title}”, and every song on it ` +
-      `comes with a note about why it is there.\n\n` +
-      `Add one here — the link lets you add songs, so keep it to yourself:\n${url}\n`,
-  };
-}
+// The link handed out is minted by the server, so this works whether or not
+// this device still has the original — an owner arriving from their account
+// has no key at all, and used to have no way to invite anybody.
+$("invite").addEventListener("click", () =>
+  window.playlistInvite.send({
+    slug,
+    title: data.title,
+    key,
+    button: $("invite"),
+    status: $("inviteStatus"),
+  })
+);
 
-$("invite").addEventListener("click", async () => {
-  const { url, subject, body } = inviteMessage();
-  const status = $("inviteStatus");
-
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: subject, text: body });
-      status.textContent = "Invite sent.";
-      return;
-    } catch {
-      // Dismissed, or refused — fall through to the clipboard.
-    }
-  }
-
+// A button rather than a plain mailto link, because the address cannot be
+// built until the server has issued the link it is supposed to contain.
+$("inviteMail").addEventListener("click", async () => {
+  const btn = $("inviteMail");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Making a link";
   try {
-    await navigator.clipboard.writeText(body);
-    status.textContent = "Invite copied. Paste it to whoever you want adding songs.";
-    announce("Invite copied to clipboard");
-  } catch {
-    status.textContent = url;
+    const url = await window.playlistInvite.mint(slug, key);
+    location.href =
+      "mailto:?subject=" + encodeURIComponent(`Add a song to “${data.title}”`) +
+      "&body=" + encodeURIComponent(window.playlistInvite.message(data.title, url));
+    $("inviteStatus").textContent = "Opened your email app with the invite in it.";
+  } catch (err) {
+    $("inviteStatus").textContent = err.message;
   }
+  btn.disabled = false;
+  btn.textContent = label;
 });
 
 /* -------------------------------------------------------------- rotate key */
@@ -886,12 +882,8 @@ function paint() {
     // account genuinely cannot be shown the existing link — but they can mint
     // a replacement, which is what they actually need in order to invite anyone.
     $("editLinkRow").hidden = !key;
-    $("inviteActions").hidden = !key;
-    if (key) {
-      const { subject, body } = inviteMessage();
-      $("inviteMail").href =
-        "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-    }
+    // Shown whether or not this device has the key: the server issues one.
+    $("inviteActions").hidden = false;
     $("editLinkHint").textContent = !key
       ? "This device does not have the edit link, and it cannot be looked up — only a " +
         "hash of it is stored. Make a new one below before you can invite anyone."

@@ -96,6 +96,7 @@
   </div>
 
 <script src="/account.js"></script>
+<script src="/invite.js"></script>
 <script>
 const STORE = "map.playlists";
 const $ = (id) => document.getElementById(id);
@@ -186,6 +187,26 @@ function accountCard(p) {
     // authorizes this without the edit key being in the URL at all.
     action("a", p.isOwner ? "Manage it" : "Add songs", { href: "/e/" + p.slug })
   );
+
+  // Claiming a playlist used to take this button away, because an account
+  // card has no edit key to build a link from. The server mints one now, so
+  // owning a playlist gains the invite instead of losing it.
+  if (p.isOwner) {
+    const invite = action("button", "Invite someone");
+    const status = document.createElement("p");
+    status.className = "card-meta";
+    status.style.marginTop = "10px";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+
+    invite.addEventListener("click", () =>
+      window.playlistInvite.send({ slug: p.slug, title: p.title, button: invite, status })
+    );
+    actions.appendChild(invite);
+    card.append(actions, status);
+    return card;
+  }
+
   card.appendChild(actions);
   return card;
 }
@@ -238,30 +259,17 @@ function deviceCard(entry, signedIn) {
   });
 
   // Sending this link is what it is for, so it gets a button here too rather
-  // than only inside the edit page.
+  // than only inside the edit page. The key on this device authorizes the
+  // request; the link handed out is a fresh one either way.
   const invite = action("button", "Invite someone");
-  invite.addEventListener("click", async () => {
-    const title = entry.title || "a playlist";
-    const message =
-      `I am putting together a playlist called “${title}”, and every song on it comes ` +
-      `with a note about why it is there.\n\nAdd one here — the link lets you add songs, ` +
-      `so keep it to yourself:\n${edit}\n`;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: `Add a song to “${title}”`, text: message });
-        return;
-      } catch {
-        /* Dismissed — fall through to the clipboard. */
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(message);
-      invite.textContent = "Invite copied";
-      setTimeout(() => { invite.textContent = "Invite someone"; }, 2000);
-    } catch {
-      invite.textContent = "Copy the edit link above";
-    }
-  });
+  invite.addEventListener("click", () =>
+    window.playlistInvite.send({
+      slug: entry.slug,
+      title: entry.title || "a playlist",
+      key: entry.key,
+      button: invite,
+    })
+  );
 
   const drop = action("button", "Remove from this list");
   drop.addEventListener("click", () => {

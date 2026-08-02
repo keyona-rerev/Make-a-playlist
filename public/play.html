@@ -16,9 +16,11 @@
       <p class="intro" id="intro"></p>
       <div class="masthead-actions" id="actions" hidden>
         <button id="share" type="button">Share this playlist</button>
+        <button id="invite" type="button" hidden>Invite someone to add songs</button>
         <a id="manage" class="btn-ghost" href="#" hidden>Manage it</a>
         <span class="meta" id="stats"></span>
       </div>
+      <p class="meta" id="inviteStatus" role="status" aria-live="polite" style="margin-top:0.75rem"></p>
     </header>
 
     <div id="error" hidden></div>
@@ -49,6 +51,7 @@
     </p>
   </div>
 
+<script src="/invite.js"></script>
 <script>
 const slug = location.pathname.split("/").filter(Boolean)[1];
 let data = null;
@@ -221,6 +224,23 @@ function setUpSharing() {
   if (data.canEdit) {
     $("manage").href = "/e/" + slug;
     $("manage").hidden = false;
+  }
+
+  // This is the page an owner is most likely to be looking at when they think
+  // "I want someone to add a song", so the invite belongs here and not only
+  // behind Manage. The share button above is the listening link; this is the
+  // other one, and the two are deliberately not the same button.
+  if (data.canAdminister) {
+    const btn = $("invite");
+    btn.hidden = false;
+    btn.addEventListener("click", () =>
+      window.playlistInvite.send({
+        slug,
+        title: data.title,
+        button: btn,
+        status: $("inviteStatus"),
+      })
+    );
   }
 
   // Anyone can publish here without an account, so there has to be a way to

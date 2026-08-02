@@ -84,6 +84,20 @@ CREATE INDEX IF NOT EXISTS idx_playlists_public ON playlists (is_public, updated
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE users DROP COLUMN IF EXISTS google_sub;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (lower(email));
+
+-- Extra edit keys, so inviting a contributor never depends on still having
+-- the original link lying around. Only a hash of that one is kept, which
+-- meant an owner who signed in on a new device — or simply claimed their
+-- playlist — had no way to invite anyone without replacing the link they
+-- had already sent out. Each invite is its own token and can stand alongside
+-- the others.
+CREATE TABLE IF NOT EXISTS playlist_invites (
+  id          BIGSERIAL PRIMARY KEY,
+  playlist_id BIGINT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+  token_hash  TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_invites_playlist ON playlist_invites (playlist_id);
 `;
 
 const SESSION_DAYS = 30;
@@ -247,6 +261,12 @@ async function loadPlaylist(slug) {
   const { rows } = await pool.query("SELECT * FROM playlists WHERE slug = $1", [slug]);
   if (!rows[0]) return null;
   const playlist = rows[0];
+  // Carried on the playlist so checking a key stays synchronous everywhere.
+  const invites = await pool.query(
+    "SELECT token_hash FROM playlist_invites WHERE playlist_id = $1",
+    [playlist.id]
+  );
+  playlist.invite_hashes = invites.rows.map((r) => r.token_hash);
   const tracks = await pool.query(
     "SELECT * FROM playlist_tracks WHERE playlist_id = $1 ORDER BY position ASC, id ASC",
     [playlist.id]
@@ -355,8 +375,12 @@ app.use("/api", (req, res, next) => {
 // Two ways in. Accounts are additive rather than a gate, so a link already
 // sent out keeps working until its owner deliberately replaces it.
 
-const holdsEditKey = (req, playlist) =>
-  tokenMatches(req.get("X-Edit-Key"), playlist.edit_token_hash);
+const holdsEditKey = (req, playlist) => {
+  const supplied = req.get("X-Edit-Key");
+  if (!supplied) return false;
+  if (tokenMatches(supplied, playlist.edit_token_hash)) return true;
+  return (playlist.invite_hashes || []).some((hash) => tokenMatches(supplied, hash));
+};
 
 const ownsIt = (req, playlist) =>
   Boolean(req.user && playlist.owner_id && String(playlist.owner_id) === String(req.user.id));
@@ -685,6 +709,21 @@ app.patch("/api/playlists/:slug", async (req, res) => {
   res.json(publicShape(rows[0], found.tracks, req));
 });
 
+// Hands back a link that lets someone add songs. Minted fresh each time and
+// valid alongside every other one, so an owner can invite a person without
+// having kept the original link and without breaking anyone else's.
+app.post("/api/playlists/:slug/invite", async (req, res) => {
+  const found = await requireAdmin(req, res);
+  if (!found) return;
+
+  const token = randomId(32);
+  await pool.query(
+    "INSERT INTO playlist_invites (playlist_id, token_hash) VALUES ($1, $2)",
+    [found.playlist.id, hashToken(token)]
+  );
+  res.status(201).json({ editKey: token });
+});
+
 // Losing the edit link used to be permanent, and a link once sent out could
 // never be taken back. Rotating replaces the token: the owner gets a fresh
 // link to hand out, and every copy of the old one stops working.
@@ -697,6 +736,8 @@ app.post("/api/playlists/:slug/rotate-key", async (req, res) => {
     hashToken(editToken),
     found.playlist.id,
   ]);
+  // "Every old copy stops working" has to include the invites, or it is a lie.
+  await pool.query("DELETE FROM playlist_invites WHERE playlist_id = $1", [found.playlist.id]);
   res.json({ editKey: editToken });
 });
 
