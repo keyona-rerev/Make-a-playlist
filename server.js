@@ -456,6 +456,37 @@ app.get("/api/me", (req, res) => {
   res.json({
     signInAvailable: true,
     user: req.user ? shapeUser(req.user) : null,
+    isOperator: isOperator(req),
+  });
+});
+
+// Ownerless playlists, for an operator to adopt. Without this there was no
+// way to reach one: Browse hides playlists with no songs, /mine only lists
+// what you already own, and the edit page needs a slug you can only learn
+// from a link that — in the case that matters — has been lost.
+app.get("/api/my/adoptable", async (req, res) => {
+  if (!isOperator(req)) {
+    return res.status(403).json({ error: "Only a site operator can see this." });
+  }
+
+  const { rows } = await pool.query(
+    `SELECT p.*,
+            (SELECT count(*) FROM playlist_tracks t WHERE t.playlist_id = p.id) AS track_count
+       FROM playlists p
+      WHERE p.owner_id IS NULL
+      ORDER BY p.created_at DESC
+      LIMIT 200`
+  );
+
+  res.json({
+    playlists: rows.map((p) => ({
+      slug: p.slug,
+      title: p.title,
+      creatorName: p.creator_name,
+      trackCount: Number(p.track_count),
+      isPublic: p.is_public !== false,
+      createdAt: p.created_at,
+    })),
   });
 });
 

@@ -73,6 +73,21 @@
         <div class="panel empty">Nothing here yet. <a href="/?new=1">Make a playlist</a> and it will show up.</div>
       </div>
 
+      <!-- Operators only. A playlist made before accounts existed belongs to
+           nobody, and if its edit link is gone there is otherwise no way to
+           reach it at all — it does not appear in Browse if it has no songs. -->
+      <section id="adoptSection" hidden style="margin-top:36px">
+        <div class="browse-head">
+          <h2>Playlists with no owner</h2>
+          <span class="browse-count" id="adoptCount"></span>
+        </div>
+        <p class="sub" style="margin-bottom:16px">
+          Made before there were accounts, or by someone signed out. As a site
+          operator you can adopt one into your account without its edit link.
+        </p>
+        <div class="mine-list" id="adoptList"></div>
+      </section>
+
       <!-- Signed out, this list is only ever as good as this browser's memory.
            Anyone who still has an edit link in their email can put it back. -->
       <section class="panel" style="margin-top:28px">
@@ -354,7 +369,24 @@ async function render() {
     ? plural(deviceList.length, "playlist", "playlists")
     : "";
 
-  $("emptyState").hidden = Boolean(accountList.length || deviceList.length);
+  // Operators get a way in to playlists nobody owns, which is otherwise a
+  // dead end: no slug to type, no link to paste, invisible in Browse.
+  let adoptable = [];
+  if (state.isOperator) {
+    try {
+      const res = await fetch("/api/my/adoptable");
+      if (res.ok) adoptable = (await res.json()).playlists || [];
+    } catch {
+      /* The rest of the page is still useful without it. */
+    }
+  }
+  $("adoptList").replaceChildren(...adoptable.map(adoptCard));
+  $("adoptSection").hidden = !adoptable.length;
+  $("adoptCount").textContent = adoptable.length
+    ? plural(adoptable.length, "playlist", "playlists")
+    : "";
+
+  $("emptyState").hidden = Boolean(accountList.length || deviceList.length || adoptable.length);
 
   $("lede").textContent = signedIn
     ? "Playlists you own or have added songs to, plus anything still saved only in this browser."
@@ -367,6 +399,57 @@ async function render() {
     : "<strong>This list lives in this browser.</strong> Signed out, there is nothing else holding " +
       "these edit links, so clearing your browsing data loses them for good. The links themselves " +
       "never expire. Public playlists are also in <a href=\"/browse\">Browse all</a> either way.";
+}
+
+/* ----------------------------------------------------------------- adopt */
+
+function adoptCard(p) {
+  const card = document.createElement("div");
+  card.className = "card";
+
+  const title = document.createElement("h3");
+  title.textContent = p.title;
+
+  const bits = [
+    plural(p.trackCount, "song", "songs"),
+    p.creatorName ? "by " + p.creatorName : "no name given",
+  ];
+  if (!p.isPublic) bits.push("Unlisted");
+
+  const meta = document.createElement("p");
+  meta.className = "card-meta";
+  meta.textContent = bits.join(" · ");
+
+  const status = document.createElement("p");
+  status.className = "card-meta";
+  status.style.marginTop = "10px";
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+
+  const adopt = action("button", "Adopt into my account");
+  adopt.addEventListener("click", async () => {
+    adopt.disabled = true;
+    adopt.textContent = "Adopting";
+    try {
+      const res = await fetch("/api/playlists/" + encodeURIComponent(p.slug) + "/claim", {
+        method: "POST",
+      });
+      if (res.ok) return render();
+      const body = await res.json().catch(() => ({}));
+      status.textContent = body.error || "Could not adopt it.";
+    } catch {
+      status.textContent = "Could not reach the server.";
+    }
+    adopt.disabled = false;
+    adopt.textContent = "Adopt into my account";
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "card-actions";
+  actions.append(action("a", "Listen to it", { href: "/p/" + p.slug }), adopt);
+
+  card.append(title, meta, actions, status);
+  return card;
 }
 
 /* ---------------------------------------------------------------- recover */
