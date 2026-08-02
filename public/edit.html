@@ -53,7 +53,16 @@
         </div>
 
         <div class="field" style="margin-bottom:0" id="editLinkField">
-          <label for="editLink" id="editLinkLabel">Keep this one — anyone with it can add songs</label>
+          <label for="editLink" id="editLinkLabel">To let people add songs</label>
+
+          <!-- The whole point of this link is to be sent to someone, so sending
+               it is a button rather than a field the owner is told to guard. -->
+          <div class="invite-actions" id="inviteActions" hidden>
+            <button id="invite" type="button" class="btn-primary">Invite someone to add songs</button>
+            <a id="inviteMail" class="btn-ghost" href="#">Invite by email</a>
+          </div>
+          <p class="hint" id="inviteStatus" role="status" aria-live="polite"></p>
+
           <div class="copyrow" id="editLinkRow">
             <input id="editLink" readonly>
             <button type="button" data-copy="editLink">Copy</button>
@@ -735,6 +744,46 @@ $("deleteBtn").addEventListener("click", async () => {
   }
 });
 
+/* ------------------------------------------------------------------ invite */
+
+// A bare URL pasted into a chat does not explain itself, and this one asks
+// something of the person receiving it. The message goes with the link.
+function inviteMessage() {
+  const url = location.origin + "/e/" + slug + "#" + key;
+  const name = data.creatorName ? data.creatorName + " is" : "I am";
+  return {
+    url,
+    subject: `Add a song to “${data.title}”`,
+    body:
+      `${name} putting together a playlist called “${data.title}”, and every song on it ` +
+      `comes with a note about why it is there.\n\n` +
+      `Add one here — the link lets you add songs, so keep it to yourself:\n${url}\n`,
+  };
+}
+
+$("invite").addEventListener("click", async () => {
+  const { url, subject, body } = inviteMessage();
+  const status = $("inviteStatus");
+
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: subject, text: body });
+      status.textContent = "Invite sent.";
+      return;
+    } catch {
+      // Dismissed, or refused — fall through to the clipboard.
+    }
+  }
+
+  try {
+    await navigator.clipboard.writeText(body);
+    status.textContent = "Invite copied. Paste it to whoever you want adding songs.";
+    announce("Invite copied to clipboard");
+  } catch {
+    status.textContent = url;
+  }
+});
+
 /* -------------------------------------------------------------- rotate key */
 
 let rotateArmed = false;
@@ -830,19 +879,26 @@ function paint() {
         "someone else. You can unlist or delete it, and everything you do here is done as them."
       : "<strong>This playlist is yours.</strong> Add songs, rearrange them, change how it " +
         "looks, and send the edit link to anyone you want contributing.";
-    $("linksHeading").textContent = "Your two links";
-    $("editLinkLabel").textContent = "Keep this one — anyone with it can add songs";
+    $("linksHeading").textContent = "Two links, two jobs";
+    $("editLinkLabel").textContent = "To let people add songs";
 
     // Only a hash of the key is stored, so an owner who arrived through their
     // account genuinely cannot be shown the existing link — but they can mint
     // a replacement, which is what they actually need in order to invite anyone.
     $("editLinkRow").hidden = !key;
+    $("inviteActions").hidden = !key;
+    if (key) {
+      const { subject, body } = inviteMessage();
+      $("inviteMail").href =
+        "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    }
     $("editLinkHint").textContent = !key
       ? "This device does not have the edit link, and it cannot be looked up — only a " +
-        "hash of it is stored. Make a new one below to invite contributors."
+        "hash of it is stored. Make a new one below before you can invite anyone."
       : data.hasOwner
-        ? "Send it to contributors. You do not need it yourself — your account gets you back in."
-        : "Send it to contributors, and keep your own copy: it is the only way back into this playlist.";
+        ? "Anyone with this link can add songs. You do not need it yourself — your account gets you back in."
+        : "Anyone with this link can add songs, and it is also your own way back into this " +
+          "playlist, so keep a copy.";
     $("keepSafe").hidden = !key || Boolean(data.hasOwner);
     $("rotateWrap").hidden = false;
     $("rotateKey").textContent = key ? "Replace the edit link" : "Make a new edit link";
@@ -854,6 +910,9 @@ function paint() {
     $("linksHeading").textContent = "Links for this playlist";
     $("editLinkLabel").textContent = "The link you were given — treat it as private";
     $("editLinkRow").hidden = false;
+    // Passing on someone else's edit link is not a guest's call to make.
+    $("inviteActions").hidden = true;
+    $("inviteStatus").textContent = "";
     $("editLinkHint").textContent =
       "Anyone with this can add songs. It is not yours to hand on; send the share link above instead.";
     $("keepSafe").hidden = true;

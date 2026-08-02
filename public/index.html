@@ -134,10 +134,12 @@
           </div>
 
           <p style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap">
-            <a id="goEdit" class="btn-ghost" href="#" style="display:inline-block">Start adding songs</a>
+            <a id="goEdit" class="btn-primary" href="#" style="display:inline-block">Start adding songs</a>
+            <button id="invite" type="button" class="btn-ghost">Invite someone to add songs</button>
             <a id="mailLinks" class="btn-ghost" href="#" style="display:inline-block">Email these to myself</a>
             <button id="downloadLinks" type="button" class="btn-ghost">Save as a file</button>
           </p>
+          <p class="hint" id="inviteStatus" role="status" aria-live="polite" style="margin-top:10px"></p>
         </div>
       </section>
 
@@ -314,6 +316,31 @@ $("create").addEventListener("click", async () => {
     $("mailLinks").href =
       "mailto:?subject=" + encodeURIComponent("Playlist links: " + title) +
       "&body=" + encodeURIComponent(body_);
+
+    // The invite carries its own explanation — a bare link in a chat asks
+    // something of the person receiving it without saying what.
+    const inviteBody =
+      `I am putting together a playlist called “${title}”, and every song on it comes ` +
+      `with a note about why it is there.\n\nAdd one here — the link lets you add songs, ` +
+      `so keep it to yourself:\n${edit}\n`;
+
+    $("invite").onclick = async () => {
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: `Add a song to “${title}”`, text: inviteBody });
+          return;
+        } catch {
+          /* Dismissed — fall through to the clipboard. */
+        }
+      }
+      try {
+        await navigator.clipboard.writeText(inviteBody);
+        $("inviteStatus").textContent =
+          "Invite copied. Paste it to whoever you want adding songs.";
+      } catch {
+        $("inviteStatus").textContent = edit;
+      }
+    };
 
     $("downloadLinks").onclick = () => {
       const url = URL.createObjectURL(new Blob([body_], { type: "text/plain" }));

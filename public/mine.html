@@ -73,6 +73,23 @@
         <div class="panel empty">Nothing here yet. <a href="/?new=1">Make a playlist</a> and it will show up.</div>
       </div>
 
+      <!-- Signed out, this list is only ever as good as this browser's memory.
+           Anyone who still has an edit link in their email can put it back. -->
+      <section class="panel" style="margin-top:28px">
+        <h2 style="font-size:19px;font-weight:500;margin-bottom:6px">Add a playlist you have the link for</h2>
+        <p class="sub" style="margin-bottom:16px">
+          Paste an edit link — the one ending in a long code — and it goes back on this list.
+        </p>
+        <div class="field" style="margin-bottom:0">
+          <label for="recoverInput">Edit link</label>
+          <div class="copyrow">
+            <input id="recoverInput" placeholder="https://…/e/abc12345#…" autocomplete="off">
+            <button id="recoverBtn" type="button">Add it</button>
+          </div>
+          <p class="hint" id="recoverStatus" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
       <div class="rail-panel" id="footnote" style="margin-top:28px"></div>
     </main>
 
@@ -220,6 +237,32 @@ function deviceCard(entry, signedIn) {
     }
   });
 
+  // Sending this link is what it is for, so it gets a button here too rather
+  // than only inside the edit page.
+  const invite = action("button", "Invite someone");
+  invite.addEventListener("click", async () => {
+    const title = entry.title || "a playlist";
+    const message =
+      `I am putting together a playlist called “${title}”, and every song on it comes ` +
+      `with a note about why it is there.\n\nAdd one here — the link lets you add songs, ` +
+      `so keep it to yourself:\n${edit}\n`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `Add a song to “${title}”`, text: message });
+        return;
+      } catch {
+        /* Dismissed — fall through to the clipboard. */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(message);
+      invite.textContent = "Invite copied";
+      setTimeout(() => { invite.textContent = "Invite someone"; }, 2000);
+    } catch {
+      invite.textContent = "Copy the edit link above";
+    }
+  });
+
   const drop = action("button", "Remove from this list");
   drop.addEventListener("click", () => {
     drop.textContent = "Removing";
@@ -229,6 +272,7 @@ function deviceCard(entry, signedIn) {
   actions.append(
     action("a", "Open it", { href: share }),
     action("a", "Add songs", { href: edit }),
+    invite,
     claim,
     drop
   );
@@ -316,6 +360,61 @@ async function render() {
       "these edit links, so clearing your browsing data loses them for good. The links themselves " +
       "never expire. Public playlists are also in <a href=\"/browse\">Browse all</a> either way.";
 }
+
+/* ---------------------------------------------------------------- recover */
+
+// Accepts a whole edit link, or just "slug#key" — people paste what they have.
+function parseEditLink(raw) {
+  const text = raw.trim();
+  if (!text) return null;
+  const match = text.match(/(?:\/e\/)?([A-Za-z0-9]{4,32})#([A-Za-z0-9]{8,64})/);
+  return match ? { slug: match[1], key: match[2] } : null;
+}
+
+$("recoverBtn").addEventListener("click", async () => {
+  const status = $("recoverStatus");
+  const parsed = parseEditLink($("recoverInput").value);
+
+  if (!parsed) {
+    status.textContent =
+      "That does not look like an edit link. It has a # in it, followed by a long code.";
+    return;
+  }
+
+  const btn = $("recoverBtn");
+  btn.disabled = true;
+  status.textContent = "Checking";
+
+  try {
+    const res = await fetch("/api/playlists/" + encodeURIComponent(parsed.slug), {
+      headers: { "X-Edit-Key": parsed.key },
+    });
+    if (!res.ok) {
+      status.textContent = "There is no playlist at that link.";
+    } else {
+      const found = await res.json();
+      if (!found.canEdit) {
+        status.textContent = "That key is not valid for this playlist. Check you copied all of it.";
+      } else {
+        const list = saved().filter((p) => p.slug !== parsed.slug);
+        list.unshift({
+          slug: parsed.slug,
+          key: parsed.key,
+          title: found.title,
+          role: found.hasOwner && !found.isOwner ? "guest" : "creator",
+          savedAt: Date.now(),
+        });
+        localStorage.setItem(STORE, JSON.stringify(list));
+        $("recoverInput").value = "";
+        status.textContent = `Added “${found.title}”.`;
+        render();
+      }
+    }
+  } catch {
+    status.textContent = "Could not reach the server. Try again.";
+  }
+  btn.disabled = false;
+});
 
 render();
 </script>

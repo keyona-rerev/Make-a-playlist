@@ -201,6 +201,8 @@ textarea { resize: vertical; min-height: 6rem; line-height: 1.55; }
 .notice--error { border-left-color: var(--rust); background: rgba(180, 85, 45, 0.1); }
 .empty { border: 1px dashed var(--ink-line); border-radius: var(--radius); padding: 2.5rem 1.5rem; text-align: center; color: var(--muted); }
 
+.invite-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
+
 .copyrow { display: flex; gap: 0.5rem; align-items: stretch; margin-top: 0.5rem; }
 .copyrow input { font-family: var(--ui); font-size: 0.8125rem; }
 .copyrow button { white-space: nowrap; }
