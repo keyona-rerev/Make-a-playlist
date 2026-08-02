@@ -299,7 +299,7 @@ function publicShape(playlist, tracks, req) {
     canAdminister: playlist.owner_id ? isOwner || operator : hasKey || operator,
     isOperator: operator,
     reportEmail: process.env.REPORT_EMAIL || "",
-    claimable: Boolean(!playlist.owner_id && hasKey),
+    claimable: Boolean(!playlist.owner_id && (hasKey || operator)),
     tracks: tracks.map((t) => ({
       id: t.id,
       position: t.position,
@@ -566,7 +566,11 @@ app.post("/api/playlists/:slug/claim", async (req, res) => {
   if (p.owner_id) {
     return res.json({ claimed: ownsIt(req, p), alreadyOwned: true, mine: ownsIt(req, p) });
   }
-  if (!holdsEditKey(req, p)) {
+  // An operator can already delete or unlist any playlist, so refusing them the
+  // lesser act of adopting an ownerless one made no sense — and it left a
+  // playlist whose link had been lost with no route back into anyone's account
+  // short of editing the database by hand.
+  if (!holdsEditKey(req, p) && !isOperator(req)) {
     return res.status(403).json({ error: "You need this playlist's edit link to claim it." });
   }
 

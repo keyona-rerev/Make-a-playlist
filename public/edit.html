@@ -956,9 +956,12 @@ function paint() {
   if (data.claimable) {
     panel.hidden = false;
     if (account.user) {
-      $("claimText").textContent =
-        "Nobody owns this playlist yet, so the edit link is the only way into it. " +
-        "Save it to your account and you can always get back in, even if the link is lost.";
+      $("claimText").textContent = data.isOperator && !key
+        ? "Nobody owns this playlist yet. You are signed in as a site operator, so you can " +
+          "adopt it without its edit link — useful for a playlist made before accounts existed, " +
+          "or one whose link has been lost."
+        : "Nobody owns this playlist yet, so the edit link is the only way into it. " +
+          "Save it to your account and you can always get back in, even if the link is lost.";
       $("claimBtn").hidden = false;
       $("claimSignIn").hidden = true;
     } else if (account.signInAvailable) {
