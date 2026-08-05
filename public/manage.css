@@ -1,0 +1,162 @@
+/* Manage page (/e) — the site's glass chrome.
+ *
+ * The edit page was the last screen still wearing the liner-notes theme from
+ * app.css, which meant the one place a maker actually spends time looked like
+ * a different product from the homepage, Browse, Your playlists and sign-in.
+ * The listening page (/p) deliberately keeps liner notes — that is the
+ * artifact, not the workshop.
+ *
+ * Loaded after home.css. Everything here either fills a gap (this page has
+ * controls no other page has) or maps an old app.css variable onto its glass
+ * equivalent, so the inline styles inside the page's own script keep working
+ * without being hunted down one at a time.
+ */
+
+/* Old names, new palette. */
+:root {
+  --paper-dim: rgba(255, 255, 255, 0.55);
+  --brass: #D67229;
+  --rust: rgba(245, 108, 108, 0.45);
+}
+
+/* The panels live in a plain div rather than <main> now, so the column
+   spacing that .main provides has to be restated for it. */
+#main {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  min-width: 0;
+}
+
+h2 { font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+
+/* ------------------------------------------------------------------- text */
+
+.hint {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dimmer);
+  margin-top: 7px;
+}
+
+.hint a, .lede a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.meta { font-size: 12px; color: var(--text-dimmer); }
+
+/* ---------------------------------------------------------------- buttons */
+
+/* This page makes a lot of small buttons from script with no class on them —
+   move, edit, cancel, rotate, reset. Styling the bare element covers all of
+   them; the specific rules in home.css (.btn-primary, .copyrow button) are
+   more specific and still win where they apply. */
+button {
+  background: var(--glass-bg);
+  border: var(--glass-border);
+  color: var(--text);
+  border-radius: var(--r-pill);
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+button:hover { background: rgba(255, 255, 255, 0.06); }
+button:disabled { opacity: 0.55; cursor: default; }
+
+.btn-danger {
+  background: rgba(245, 108, 108, 0.12);
+  border: 1px solid rgba(245, 108, 108, 0.45);
+  color: var(--text);
+  border-radius: var(--r-pill);
+  padding: 12px 24px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.btn-danger:hover { background: rgba(245, 108, 108, 0.2); }
+
+/* Dark page, so the native dropdown list needs telling too. */
+.field option { background: #1A1108; color: var(--text); }
+
+.invite-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+/* --------------------------------------------------------- invite wording */
+
+/* A details block, so the page does not open with a wall of text — but it
+   has to read as a deliberate control rather than a browser default. */
+details summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+details summary::-webkit-details-marker { display: none; }
+details summary::before { content: "+"; font-size: 14px; line-height: 1; }
+details[open] summary::before { content: "\2212"; }
+
+#invitePreview {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  margin-top: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------- song list */
+
+/* A full glass panel each was far too heavy at forty of them, so a song is a
+   lighter inset card that still sits inside the same family. */
+.songrow {
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-md);
+  padding: 16px 20px;
+}
+.songrow + .songrow { margin-top: 10px; }
+
+.track-mark {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dimmer);
+  padding-top: 3px;
+}
+
+/* --------------------------------------------------------- painted scene */
+
+/* The look picker on this page changes what listeners see, so the page it is
+   set from moves with it — same glass, the playlist's palette. */
+body.theme-birthday {
+  --accent: #F47F24;
+  --accent-glow: rgba(244, 127, 36, 0.3);
+  --glass-border-color: rgba(244, 127, 36, 0.42);
+  --brass: #F47F24;
+  --text: #F2ECCC;
+
+  background-color: #1C1522;
+  background-image: radial-gradient(circle at 50% 120%, rgba(244, 127, 36, 0.34) 0%, #1C1522 62%);
+}
