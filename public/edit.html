@@ -6,42 +6,70 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <title>Add to the playlist</title>
   <meta name="robots" content="noindex">
-  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/home.css">
+  <link rel="stylesheet" href="/manage.css">
 </head>
 <body>
-  <div class="wrap wrap--narrow">
-    <nav class="topbar">
-      <a href="/" class="home">Make a playlist</a>
-      <span class="topbar-right">
-        <a href="/mine">Your playlists</a>
-        <span data-account></span>
-      </span>
-    </nav>
+  <div class="blob-container">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
 
-    <header class="masthead">
-      <p class="eyebrow" id="eyebrow">Edit mode</p>
-      <h1 id="title">Loading</h1>
-      <p class="byline" id="byline"></p>
-    </header>
+  <div class="shell shell--two-col">
 
-    <div id="gate" hidden></div>
+    <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark"></span> Make a playlist</a>
 
-    <!-- Every async action reports here as well as inline, so the outcome is
-         announced rather than only appearing somewhere on screen. -->
-    <p class="sr-only" id="announce" role="status" aria-live="polite"></p>
+      <div class="nav-group">
+        <div class="nav-label">Menu</div>
+        <a class="nav-item" href="/">Home</a>
+        <a class="nav-item" href="/browse">Browse all</a>
+        <a class="nav-item" href="/mine">Your playlists</a>
+      </div>
 
-    <main id="main" hidden>
+      <div class="nav-group">
+        <div class="nav-label">Get started</div>
+        <a class="nav-item nav-item--cta" href="/?new=1">+ New playlist</a>
+      </div>
 
-      <div id="roleBanner" class="notice" style="margin-bottom:2rem"></div>
+      <p class="sidebar-note">
+        Two links do the work here: one for listening, one for adding songs.
+        This page is where both of them come from.
+      </p>
+      <div class="account-slot" data-account></div>
+    </aside>
 
-      <section id="claimPanel" class="panel" style="margin-bottom:2.5rem" hidden>
+    <main class="main">
+
+      <header class="header">
+        <div>
+          <p class="eyebrow" id="eyebrow">Edit mode</p>
+          <h1 id="title">Loading</h1>
+        </div>
+        <a class="btn-ghost" id="viewLink" href="#">See the playlist</a>
+      </header>
+
+      <p class="lede" id="byline"></p>
+
+      <div id="gate" hidden></div>
+
+      <!-- Every async action reports here as well as inline, so the outcome is
+           announced rather than only appearing somewhere on screen. -->
+      <p class="sr-only" id="announce" role="status" aria-live="polite"></p>
+
+      <div id="main" hidden>
+
+      <div id="roleBanner" class="notice"></div>
+
+      <section id="claimPanel" class="panel" hidden>
         <h2 style="margin-bottom:0.75rem">Make this yours</h2>
         <p id="claimText" style="color:var(--paper-dim); margin-bottom:1.25rem"></p>
         <button id="claimBtn" type="button" class="btn-primary" hidden>Save to my account</button>
         <a id="claimSignIn" class="btn-ghost" href="#" hidden>Make an account</a>
       </section>
 
-      <section class="links-panel" style="margin-bottom:2.5rem">
+      <section class="panel">
         <h2 style="margin-bottom:1.25rem" id="linksHeading">Your two links</h2>
 
         <div class="field">
@@ -67,7 +95,7 @@
                note; a playlist made for an occasion needs to ask for something
                more specific, and only the person sending it knows what. -->
           <details id="inviteCopy" style="margin:0.75rem 0 1.25rem" hidden>
-            <summary style="cursor:pointer; color:var(--brass)">Change what the invite says</summary>
+            <summary style="cursor:pointer">Change what the invite says</summary>
 
             <div class="field" style="margin-top:1rem">
               <label for="inviteMessage">
@@ -155,7 +183,7 @@
         </div>
       </section>
 
-      <section class="panel" style="margin-top:2.5rem" id="settingsPanel" hidden>
+      <section class="panel" id="settingsPanel" hidden>
         <h2 style="margin-bottom:1.5rem">Playlist settings</h2>
 
         <div class="field">
@@ -197,7 +225,7 @@
         <span class="meta" id="settingsStatus" style="margin-left:0.75rem"></span>
       </section>
 
-      <section style="margin-top:2.5rem">
+      <section>
         <div style="display:flex; align-items:baseline; justify-content:space-between; gap:1rem">
           <h2 style="margin-bottom:1rem">In the playlist</h2>
           <span class="meta" id="listCount"></span>
@@ -205,7 +233,7 @@
         <div id="list"></div>
       </section>
 
-      <section class="panel" style="margin-top:2.5rem; border-color:var(--rust)" id="dangerPanel" hidden>
+      <section class="panel" style="border-color:var(--rust)" id="dangerPanel" hidden>
         <h2 style="margin-bottom:0.75rem">Delete this playlist</h2>
         <p style="color:var(--paper-dim); margin-bottom:1.25rem">
           This removes the playlist and every song in it, for everyone. Links already
@@ -219,9 +247,7 @@
         <button id="deleteBtn" type="button" class="btn-danger">Delete permanently</button>
       </section>
 
-      <p class="meta" style="margin-top:2.5rem">
-        <a id="viewLink" href="#">See how it looks to everyone else</a>
-      </p>
+      </div>
     </main>
   </div>
 
@@ -562,9 +588,7 @@ function renderList() {
 
   data.tracks.forEach((t, i) => {
     const row = document.createElement("div");
-    row.className = "panel";
-    row.style.marginBottom = "0.75rem";
-    row.style.padding = "1rem 1.25rem";
+    row.className = "songrow";
 
     const head = document.createElement("div");
     head.style.display = "flex";
