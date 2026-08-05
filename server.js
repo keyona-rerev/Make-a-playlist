@@ -98,6 +98,12 @@ CREATE TABLE IF NOT EXISTS playlist_invites (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_invites_playlist ON playlist_invites (playlist_id);
+
+-- The words that go out alongside an invite link. Empty means the built-in
+-- default. A playlist made for one occasion — a birthday, a wedding, a leaving
+-- present — needs to ask for a different thing than the generic wording does,
+-- and the person handing the link out is the only one who knows what that is.
+ALTER TABLE playlists ADD COLUMN IF NOT EXISTS invite_message TEXT NOT NULL DEFAULT '';
 `;
 
 const SESSION_DAYS = 30;
@@ -289,6 +295,7 @@ function publicShape(playlist, tracks, req) {
     intro: playlist.intro,
     creatorName: playlist.creator_name,
     theme: playlist.theme || "",
+    inviteMessage: playlist.invite_message || "",
     isPublic: playlist.is_public !== false,
     hasOwner: Boolean(playlist.owner_id),
     viewCount: playlist.view_count,
@@ -730,13 +737,19 @@ app.patch("/api/playlists/:slug", async (req, res) => {
   const p = found.playlist;
   const { rows } = await pool.query(
     `UPDATE playlists
-        SET title = $1, intro = $2, creator_name = $3, theme = $4, is_public = $5, updated_at = now()
-      WHERE id = $6 RETURNING *`,
+        SET title = $1, intro = $2, creator_name = $3, theme = $4,
+            invite_message = $5, is_public = $6, updated_at = now()
+      WHERE id = $7 RETURNING *`,
     [
       req.body.title !== undefined ? clean(req.body.title, MAX_SHORT) || p.title : p.title,
       req.body.intro !== undefined ? clean(req.body.intro, MAX_COMMENTARY) : p.intro,
       req.body.creatorName !== undefined ? clean(req.body.creatorName, MAX_SHORT) : p.creator_name,
       req.body.theme !== undefined ? (THEMES[req.body.theme] ? req.body.theme : "") : p.theme,
+      // Sending an empty string is how the owner goes back to the default wording,
+      // so this is deliberately not treated the same as leaving the field out.
+      req.body.inviteMessage !== undefined
+        ? clean(req.body.inviteMessage, MAX_COMMENTARY)
+        : p.invite_message,
       req.body.isPublic !== undefined ? Boolean(req.body.isPublic) : p.is_public,
       p.id,
     ]
