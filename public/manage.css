@@ -146,6 +146,24 @@ details[open] summary::before { content: "\2212"; }
   padding-top: 3px;
 }
 
+/* ------------------------------------------------------------ background */
+
+/* Still, not drifting. The homepage can afford three 800px blurred shapes
+   slowly moving behind it — it is one screen and mostly empty. This page is
+   long, and every glass panel on it re-blurs whatever is behind it on each
+   frame, so a moving backdrop underneath means that work never stops. It read
+   as the page glitching. The blobs keep their positions and colour, so it
+   looks like the rest of the site; it just holds still.
+
+   Each blob already carries its own top/left and border-radius, so switching
+   the animation off leaves them exactly where they start rather than
+   collapsing into a corner. */
+.blob { animation: none; }
+
+/* Nothing behind the panels changes now, so the browser is free to keep the
+   blurred layer rather than recomputing it while the page scrolls. */
+.blob-container { contain: paint; }
+
 /* --------------------------------------------------------- painted scene */
 
 /* The look picker on this page changes what listeners see, so the page it is
