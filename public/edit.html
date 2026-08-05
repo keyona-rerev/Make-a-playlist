@@ -63,6 +63,36 @@
           </div>
           <p class="hint" id="inviteStatus" role="status" aria-live="polite"></p>
 
+          <!-- What the invite actually says. The default asks for a song and a
+               note; a playlist made for an occasion needs to ask for something
+               more specific, and only the person sending it knows what. -->
+          <details id="inviteCopy" style="margin:0.75rem 0 1.25rem" hidden>
+            <summary style="cursor:pointer; color:var(--brass)">Change what the invite says</summary>
+
+            <div class="field" style="margin-top:1rem">
+              <label for="inviteMessage">
+                The message that gets copied
+                <span class="count" id="inviteMessageCount">0 / 2000</span>
+              </label>
+              <textarea id="inviteMessage" maxlength="2000" style="min-height:9rem"></textarea>
+              <p class="hint">
+                Put <code>{link}</code> where the link should go — leave it out and the
+                link goes on the end. <code>{title}</code> becomes the playlist's title.
+                Leave the whole box empty to use the standard wording.
+              </p>
+            </div>
+
+            <div id="inviteMessageError" hidden></div>
+            <button id="saveInviteMessage" type="button" class="btn-primary">Save message</button>
+            <button id="resetInviteMessage" type="button" style="margin-left:0.5rem">Use the default</button>
+            <span class="meta" id="inviteMessageStatus" style="margin-left:0.75rem"></span>
+
+            <div class="field" style="margin:1.5rem 0 0">
+              <label>What they will see</label>
+              <p class="hint" id="invitePreview" style="white-space:pre-wrap"></p>
+            </div>
+          </details>
+
           <div class="copyrow" id="editLinkRow">
             <input id="editLink" readonly>
             <button type="button" data-copy="editLink">Copy</button>
@@ -344,6 +374,7 @@ function wireCounter(inputId, countId, max) {
 }
 wireCounter("tCommentary", "cCount", 2000);
 wireCounter("sIntro", "sIntroCount", 2000);
+wireCounter("inviteMessage", "inviteMessageCount", 2000);
 
 /* ------------------------------------------------------------ track editor */
 
@@ -755,9 +786,63 @@ $("invite").addEventListener("click", () =>
     slug,
     title: data.title,
     key,
+    custom: data.inviteMessage,
     button: $("invite"),
     status: $("inviteStatus"),
   })
+);
+
+/* --------------------------------------------------------- invite wording */
+
+// Previewed against a stand-in link rather than a real one, because minting a
+// token every time somebody types a character would litter the playlist with
+// live edit links nobody ever sent.
+function previewInvite() {
+  $("invitePreview").textContent = window.playlistInvite.message(
+    data ? data.title : "",
+    location.origin + "/e/" + slug + "#" + "\u2026",
+    $("inviteMessage").value
+  );
+}
+
+$("inviteMessage").addEventListener("input", previewInvite);
+
+async function saveInviteMessage(value, button, doneText) {
+  setError("inviteMessageError", "");
+  button.disabled = true;
+  $("inviteMessageStatus").textContent = "Saving";
+
+  try {
+    const res = await api("/api/playlists/" + slug, {
+      method: "PATCH",
+      body: JSON.stringify({ inviteMessage: value }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError("inviteMessageError", body.error || "Could not save that.");
+      $("inviteMessageStatus").textContent = "";
+    } else {
+      data = await res.json();
+      $("inviteMessage").value = data.inviteMessage;
+      $("inviteMessageCount").textContent = data.inviteMessage.length + " / 2000";
+      previewInvite();
+      $("inviteMessageStatus").textContent = doneText;
+      announce(doneText);
+      setTimeout(() => { $("inviteMessageStatus").textContent = ""; }, 3000);
+    }
+  } catch {
+    setError("inviteMessageError", "Could not reach the server. Try again.");
+    $("inviteMessageStatus").textContent = "";
+  }
+  button.disabled = false;
+}
+
+$("saveInviteMessage").addEventListener("click", () =>
+  saveInviteMessage($("inviteMessage").value.trim(), $("saveInviteMessage"), "Saved.")
+);
+
+$("resetInviteMessage").addEventListener("click", () =>
+  saveInviteMessage("", $("resetInviteMessage"), "Back to the standard wording.")
 );
 
 // A button rather than a plain mailto link, because the address cannot be
@@ -771,7 +856,9 @@ $("inviteMail").addEventListener("click", async () => {
     const url = await window.playlistInvite.mint(slug, key);
     location.href =
       "mailto:?subject=" + encodeURIComponent(`Add a song to “${data.title}”`) +
-      "&body=" + encodeURIComponent(window.playlistInvite.message(data.title, url));
+      "&body=" + encodeURIComponent(
+        window.playlistInvite.message(data.title, url, data.inviteMessage)
+      );
     $("inviteStatus").textContent = "Opened your email app with the invite in it.";
   } catch (err) {
     $("inviteStatus").textContent = err.message;
@@ -892,6 +979,14 @@ function paint() {
         : "Anyone with this link can add songs, and it is also your own way back into this " +
           "playlist, so keep a copy.";
     $("keepSafe").hidden = !key || Boolean(data.hasOwner);
+    $("inviteCopy").hidden = false;
+    // Left alone mid-edit, so a refresh triggered by adding a song does not
+    // wipe wording that has been typed but not saved yet.
+    if (document.activeElement !== $("inviteMessage")) {
+      $("inviteMessage").value = data.inviteMessage || "";
+      $("inviteMessageCount").textContent = (data.inviteMessage || "").length + " / 2000";
+    }
+    previewInvite();
     $("rotateWrap").hidden = false;
     $("rotateKey").textContent = key ? "Replace the edit link" : "Make a new edit link";
   } else {
@@ -908,6 +1003,7 @@ function paint() {
     $("editLinkHint").textContent =
       "Anyone with this can add songs. It is not yours to hand on; send the share link above instead.";
     $("keepSafe").hidden = true;
+    $("inviteCopy").hidden = true;
     $("rotateWrap").hidden = true;
   }
 
