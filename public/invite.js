@@ -6,14 +6,33 @@
  * their own playlist — had no link to hand out and no way to get one without
  * replacing the link they had already sent people. Each invite is its own
  * token and stands alongside the rest.
+ *
+ * The wording is the playlist's, not this file's. The default below asks for
+ * a song and a note, which is the general case; a playlist made for an
+ * occasion is asking for something more particular than that, and the only
+ * person who knows what is the one sending the link out. So an owner can
+ * write their own, and it is stored on the playlist rather than on whichever
+ * device they happened to write it from.
  */
 window.playlistInvite = (function () {
-  function message(title, url) {
-    return (
-      `I am putting together a playlist called “${title}”, and every song on it comes ` +
-      `with a note about why it is there.\n\n` +
-      `Add one here — the link lets you add songs, so keep it to yourself:\n${url}\n`
-    );
+  const DEFAULT_MESSAGE =
+    `I am putting together a playlist called “{title}”, and every song on it comes ` +
+    `with a note about why it is there.\n\n` +
+    `Add one here — the link lets you add songs, so keep it to yourself:\n{link}\n`;
+
+  // split/join rather than replace, so a title containing $& or $1 goes in
+  // literally instead of being read as a replacement pattern.
+  const fill = (text, token, value) => text.split(token).join(value);
+
+  function message(title, url, custom) {
+    const raw = String(custom || "").trim() || DEFAULT_MESSAGE;
+    const withTitle = fill(raw, "{title}", title || "");
+
+    // The link is the one thing an invite cannot do without, so leaving the
+    // token out is treated as "put it at the end" rather than as an error
+    // that quietly sends someone a message they cannot act on.
+    if (withTitle.includes("{link}")) return fill(withTitle, "{link}", url);
+    return withTitle.replace(/\s+$/, "") + "\n\n" + url + "\n";
   }
 
   async function mint(slug, key) {
@@ -34,7 +53,7 @@ window.playlistInvite = (function () {
 
   // Drives a button end to end: mint, then the share sheet where there is one,
   // falling back to the clipboard.
-  async function send({ slug, title, key, button, status }) {
+  async function send({ slug, title, key, custom, button, status }) {
     const label = button.textContent;
     button.disabled = true;
     button.textContent = "Making a link";
@@ -53,7 +72,7 @@ window.playlistInvite = (function () {
 
     button.disabled = false;
     button.textContent = label;
-    const text = message(title, url);
+    const text = message(title, url, custom);
 
     if (navigator.share) {
       try {
@@ -79,5 +98,5 @@ window.playlistInvite = (function () {
     return url;
   }
 
-  return { message, mint, send };
+  return { message, mint, send, DEFAULT_MESSAGE };
 })();
